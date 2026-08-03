@@ -1,0 +1,19 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <qresource prefix="/">
+        <file>assets/Vamora.svg</file>
+        <file>assets/Vamora.png</file>
+        <file>assets/background.jpg</file>
+        <file>assets/icons/chevron-left.svg</file>
+        <file>assets/icons/chevron-right.svg</file>
+        <file>assets/icons/download.svg</file>
+        <file>assets/icons/play.svg</file>
+        <file>assets/icons/check.svg</file>
+        <file>assets/icons/battery.svg</file>
+        <file>assets/icons/zap.svg</file>
+        <file>assets/fonts/inter/Inter-Regular.ttf</file>
+        <file>assets/fonts/inter/Inter-Medium.ttf</file>
+        <file>assets/fonts/inter/Inter-SemiBold.ttf</file>
+        <file>assets/fonts/inter/Inter-Bold.ttf</file>
+    </qresource>
+</RCC>
