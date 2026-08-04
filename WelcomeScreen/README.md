@@ -8,10 +8,11 @@ QML + CXX-Qt + Rust implementation of the VamoraOS first-boot welcome flow.
 
 ## Features
 
-- **Frosted-glass card** — backdrop blur using Qt 6.5 `MultiEffect`
-- **Language cycling** — "Hello!" and "Are you ready?" auto-rotate through 16 languages with a smooth fade if the user sits idle
-- **Animated button morph** — the single blue `>` pill expands and splits into a `‹  ›` two-button nav pill when clicked.
-- **Two screens** — Hello screen → Vamora ToS/Welcome screen
+- **Language Select** : Select the language and it would change using `localetcl`
+- **Frosted-glass card** : backdrop blur using Qt 6.5 `MultiEffect`
+- **Language cycling** : "Hello!" and "Are you ready?" auto-rotate through 16 languages with a smooth fade if the user sits idle
+- **Animated button morph** : the single blue `>` pill expands and splits into a `‹  ›` two-button nav pill when clicked.
+- **Two screens** : Hello screen → Vamora ToS/Welcome screen
 - **Keyboard shortcut just in case**
   - `Ctrl+Shift+Q` — exit (kiosk-safe, always works)
 
