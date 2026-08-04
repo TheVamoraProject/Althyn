@@ -1,7 +1,3 @@
-// VamoraOS — Welcome Screen
-//
-// Exit: Ctrl+Shift+Q
-
 import QtQuick
 import QtQuick.Controls
 import Qt5Compat.GraphicalEffects
@@ -12,7 +8,7 @@ Window {
     id: root
     visible: true
     visibility: Window.FullScreen
-    title: "VamoraOS"
+    title: "VamoraOS Setup"
     color: "transparent"
 
     // Fonts
@@ -21,41 +17,38 @@ Window {
     FontLoader { id: interSemiBold; source: "assets/fonts/inter/Inter-SemiBold.ttf" }
     FontLoader { id: interBold;     source: "assets/fonts/inter/Inter-Bold.ttf"     }
 
-    // Rust stuff
+    // Rust
     WelcomeController { id: controller }
-    Component.onCompleted: root.osName = controller.os_name()
+    Component.onCompleted: {
+        root.osName      = controller.os_name()
+        root.selectedLang = controller.locale_code()
+    }
 
     // State
     property int  langIndex:   0
-    property bool hasStarted:  false   // flips when user first clicks →
-    // 0=Hello  1=Welcome/ToS  2=Install/Try  3=ToS text  4=All set
+    property bool hasStarted:  false
     property int  currentPage: 0
-    readonly property bool onDetailPage:   currentPage === 3
-    readonly property bool onChooserPage:  currentPage === 2
-    readonly property bool onAllSetPage:   currentPage === 4
-    // true on any page that shows a single back-arrow pill
+    readonly property bool onDetailPage:   currentPage === 4
+    readonly property bool onChooserPage:  currentPage === 3
+    readonly property bool onAllSetPage:   currentPage === 5
+    readonly property bool onLangPage:     currentPage === 1
     readonly property bool pillSingleBack: onDetailPage
 
-    property string osName: ""          // populated from /etc/os-release on startup
+    property string osName:       ""   // Takes it from /etc/os-release on start
+    property string selectedLang: ""   // language chosen
+    property string selectedChoice: ""   // Try Or install
 
-    // "" = nothing picked yet, "install" or "try" once a card is tapped.
-    // Picking a card only highlights it — the forward arrow is what
-    // actually commits to it (and stays disabled until something's picked).
-    property string selectedChoice: ""
-    readonly property bool fwdEnabled: !onChooserPage || selectedChoice !== ""
+    readonly property bool fwdEnabled: {
+        if (onLangPage)    return selectedLang !== ""
+        if (onChooserPage) return selectedChoice !== ""
+        return true
+    }
 
-    // ── Animation state ────────────────────────────────────────────────────
+    // Animation
     property int  helloCharCount: 0     // typewriter character counter
-    property bool introAnimDone:  false // flips true when typewriter finishes
-    property int  _prevPage:      0     // previous page (for slide direction)
-    property bool _pagesReady:    false // guards against cold-start transition
-
-    // Match whatever corner radius the window manager gives the window.
-    // A true fullscreen window covers the whole (rectangular) display, so
-    // no rounding is needed there — but when running windowed (e.g. GNOME's
-    // client-side-decoration rounding during dev), the content needs to be
-    // clipped to the same radius or the square background pokes out past
-    // the window's rounded edges.
+    property bool introAnimDone:  false // typewriter state
+    property int  _prevPage:      0     // previous page
+    property bool _pagesReady:    false // so the animation dosnt start before the page is displayed
     property real cornerRadius: root.visibility === Window.FullScreen ? 0 : 20
 
     // the languages
@@ -77,6 +70,212 @@ Window {
         { hello: "Γεια σου!",     ready: "Είσαι έτοιμος;"        },
         { hello: "Hello!",        ready: "C'mon start the setup already"        },
     ]
+
+    // Language list shown on page 2 — sorted alphabetically by English name.
+    // Each entry: code = POSIX locale code, native = name in its own script,
+    // english = English name (empty string for English itself).
+    readonly property var languages: [
+        { code: "ar_SA.UTF-8", native: "العربية",         english: "Arabic"               },
+        { code: "zh_CN.UTF-8", native: "中文（简体）",     english: "Chinese (Simplified)"  },
+        { code: "zh_TW.UTF-8", native: "中文（繁體）",     english: "Chinese (Traditional)" },
+        { code: "cs_CZ.UTF-8", native: "Čeština",          english: "Czech"                },
+        { code: "da_DK.UTF-8", native: "Dansk",             english: "Danish"               },
+        { code: "nl_NL.UTF-8", native: "Nederlands",        english: "Dutch"                },
+        { code: "en_US.UTF-8", native: "English",           english: ""                     },
+        { code: "fi_FI.UTF-8", native: "Suomi",             english: "Finnish"              },
+        { code: "fr_FR.UTF-8", native: "Français",          english: "French"               },
+        { code: "de_DE.UTF-8", native: "Deutsch",           english: "German"               },
+        { code: "el_GR.UTF-8", native: "Ελληνικά",          english: "Greek"                },
+        { code: "he_IL.UTF-8", native: "עברית",             english: "Hebrew"               },
+        { code: "hi_IN.UTF-8", native: "हिन्दी",             english: "Hindi"                },
+        { code: "hu_HU.UTF-8", native: "Magyar",            english: "Hungarian"            },
+        { code: "id_ID.UTF-8", native: "Bahasa Indonesia",  english: "Indonesian"           },
+        { code: "it_IT.UTF-8", native: "Italiano",          english: "Italian"              },
+        { code: "ja_JP.UTF-8", native: "日本語",             english: "Japanese"             },
+        { code: "ko_KR.UTF-8", native: "한국어",             english: "Korean"               },
+        { code: "nb_NO.UTF-8", native: "Norsk Bokmål",      english: "Norwegian"            },
+        { code: "fa_IR.UTF-8", native: "فارسی",             english: "Persian"              },
+        { code: "pl_PL.UTF-8", native: "Polski",            english: "Polish"               },
+        { code: "pt_BR.UTF-8", native: "Português",         english: "Portuguese (Brazil)"  },
+        { code: "pt_PT.UTF-8", native: "Português",         english: "Portuguese (Portugal)"},
+        { code: "ro_RO.UTF-8", native: "Română",            english: "Romanian"             },
+        { code: "ru_RU.UTF-8", native: "Русский",           english: "Russian"              },
+        { code: "es_ES.UTF-8", native: "Español",           english: "Spanish"              },
+        { code: "sv_SE.UTF-8", native: "Svenska",           english: "Swedish"              },
+        { code: "tr_TR.UTF-8", native: "Türkçe",            english: "Turkish"              },
+        { code: "uk_UA.UTF-8", native: "Українська",        english: "Ukrainian"            },
+        { code: "vi_VN.UTF-8", native: "Tiếng Việt",        english: "Vietnamese"           },
+    ]
+
+    // ── UI translations — keyed by 2-letter POSIX lang code; "zh_CN" / "zh_TW"
+    // for the Simplified / Traditional split.  Keys:
+    //   setup        top-bar title
+    //   welcome      all-caps subtitle on Welcome page
+    //   tosPrefix    text before the ToS link
+    //   tosLink      clickable ToS link text
+    //   chooser      "Choose your path" heading
+    //   install      Install card label
+    //   tryBtn       Try card label
+    //   allSetTitle  "You're all set!" heading
+    //   allSetSub    subtitle after osName on the All-set page
+    //   tosTitle     Terms of Service page heading
+    //   langTitle    Language-selection page heading
+    readonly property var _tr: ({
+        "en":   { setup:"VamoraOS Setup",          welcome:"WELCOME TO YOUR NEW HOME",
+                  tosPrefix:"by continuing you are accepting our ", tosLink:"Terms of Service",
+                  chooser:"Choose your path",       install:"Install",      tryBtn:"Try",
+                  allSetTitle:"You're all set!",    allSetSub:"is ready to try",
+                  tosTitle:"Terms of Service",      langTitle:"Select Language" },
+        "ar":   { setup:"إعداد VamoraOS",           welcome:"مرحباً بك في منزلك الجديد",
+                  tosPrefix:"بالمتابعة، أنت توافق على ", tosLink:"شروط الخدمة",
+                  chooser:"اختر مسارك",             install:"تثبيت",         tryBtn:"تجربة",
+                  allSetTitle:"أنت جاهز تماماً!",  allSetSub:"جاهز للتجربة",
+                  tosTitle:"شروط الخدمة",           langTitle:"اختر اللغة" },
+        "zh_CN":{ setup:"VamoraOS 设置",            welcome:"欢迎来到您的新家",
+                  tosPrefix:"继续即表示同意",        tosLink:"服务条款",
+                  chooser:"选择您的方式",            install:"安装",          tryBtn:"试用",
+                  allSetTitle:"一切就绪！",          allSetSub:"已准备好试用",
+                  tosTitle:"服务条款",               langTitle:"选择语言" },
+        "zh_TW":{ setup:"VamoraOS 設定",            welcome:"歡迎來到您的新家",
+                  tosPrefix:"繼續即表示同意",        tosLink:"服務條款",
+                  chooser:"選擇您的方式",            install:"安裝",          tryBtn:"試用",
+                  allSetTitle:"一切就緒！",          allSetSub:"已準備好試用",
+                  tosTitle:"服務條款",               langTitle:"選擇語言" },
+        "cs":   { setup:"Nastavení VamoraOS",       welcome:"VÍTEJTE VE VAŠEM NOVÉM DOMOVĚ",
+                  tosPrefix:"pokračováním přijímáte naše ", tosLink:"Podmínky služby",
+                  chooser:"Vyberte svou cestu",     install:"Nainstalovat", tryBtn:"Vyzkoušet",
+                  allSetTitle:"Vše připraveno!",    allSetSub:"je připraven k vyzkoušení",
+                  tosTitle:"Podmínky služby",        langTitle:"Vyberte jazyk" },
+        "da":   { setup:"VamoraOS Opsætning",       welcome:"VELKOMMEN TIL DIT NYE HJEM",
+                  tosPrefix:"ved at fortsætte accepterer du vores ", tosLink:"Servicevilkår",
+                  chooser:"Vælg din vej",           install:"Installer",     tryBtn:"Prøv",
+                  allSetTitle:"Alt er klar!",       allSetSub:"er klar til at prøve",
+                  tosTitle:"Servicevilkår",          langTitle:"Vælg sprog" },
+        "nl":   { setup:"VamoraOS Installatie",     welcome:"WELKOM IN UW NIEUWE THUIS",
+                  tosPrefix:"door verder te gaan accepteer je onze ", tosLink:"Servicevoorwaarden",
+                  chooser:"Kies uw pad",            install:"Installeren",   tryBtn:"Proberen",
+                  allSetTitle:"Alles klaar!",       allSetSub:"is klaar om te proberen",
+                  tosTitle:"Servicevoorwaarden",     langTitle:"Taal selecteren" },
+        "fi":   { setup:"VamoraOS Asennus",         welcome:"TERVETULOA UUTEEN KOTIISI",
+                  tosPrefix:"jatkamalla hyväksyt ",  tosLink:"käyttöehdot",
+                  chooser:"Valitse polkusi",         install:"Asenna",        tryBtn:"Kokeile",
+                  allSetTitle:"Kaikki valmista!",   allSetSub:"on valmis kokeiltavaksi",
+                  tosTitle:"Käyttöehdot",            langTitle:"Valitse kieli" },
+        "fr":   { setup:"Configuration VamoraOS",   welcome:"BIENVENUE DANS VOTRE NOUVEAU FOYER",
+                  tosPrefix:"en continuant, vous acceptez nos ", tosLink:"Conditions d'utilisation",
+                  chooser:"Choisissez votre parcours", install:"Installer",  tryBtn:"Essayer",
+                  allSetTitle:"C'est parti !",      allSetSub:"est prêt à être essayé",
+                  tosTitle:"Conditions d'utilisation", langTitle:"Choisir la langue" },
+        "de":   { setup:"VamoraOS Einrichtung",     welcome:"WILLKOMMEN IN IHREM NEUEN ZUHAUSE",
+                  tosPrefix:"durch Fortfahren akzeptieren Sie unsere ", tosLink:"Nutzungsbedingungen",
+                  chooser:"Wählen Sie Ihren Weg",   install:"Installieren",  tryBtn:"Ausprobieren",
+                  allSetTitle:"Alles bereit!",      allSetSub:"ist bereit zum Ausprobieren",
+                  tosTitle:"Nutzungsbedingungen",    langTitle:"Sprache wählen" },
+        "el":   { setup:"Ρύθμιση VamoraOS",         welcome:"ΚΑΛΩΣ ΗΡΘΑΤΕ ΣΤΟ ΝΕΟ ΣΑΣ ΣΠΙΤΙ",
+                  tosPrefix:"συνεχίζοντας, αποδέχεστε τους ", tosLink:"Όρους Υπηρεσίας",
+                  chooser:"Επιλέξτε τον δρόμο σας", install:"Εγκατάσταση", tryBtn:"Δοκιμή",
+                  allSetTitle:"Όλα έτοιμα!",        allSetSub:"είναι έτοιμο για δοκιμή",
+                  tosTitle:"Όροι Υπηρεσίας",         langTitle:"Επιλογή γλώσσας" },
+        "he":   { setup:"הגדרת VamoraOS",           welcome:"ברוכים הבאים לביתכם החדש",
+                  tosPrefix:"על ידי המשך, אתה מסכים ל", tosLink:"תנאי השירות",
+                  chooser:"בחר את הדרך שלך",        install:"התקן",          tryBtn:"נסה",
+                  allSetTitle:"הכל מוכן!",          allSetSub:"מוכן לניסיון",
+                  tosTitle:"תנאי השירות",            langTitle:"בחר שפה" },
+        "hi":   { setup:"VamoraOS सेटअप",           welcome:"अपने नए घर में आपका स्वागत है",
+                  tosPrefix:"जारी रखने से आप हमारी ", tosLink:"सेवा शर्तें स्वीकार करते हैं",
+                  chooser:"अपना रास्ता चुनें",      install:"इंस्टॉल करें",  tryBtn:"आज़माएं",
+                  allSetTitle:"सब तैयार है!",       allSetSub:"आज़माने के लिए तैयार है",
+                  tosTitle:"सेवा की शर्तें",         langTitle:"भाषा चुनें" },
+        "hu":   { setup:"VamoraOS Beállítás",       welcome:"ÜDVÖZÖLJÜK AZ ÚJ OTTHONÁBAN",
+                  tosPrefix:"a folytatással elfogadja a ", tosLink:"Felhasználási feltételeket",
+                  chooser:"Válasszon utat",          install:"Telepítés",     tryBtn:"Kipróbálás",
+                  allSetTitle:"Minden készen áll!", allSetSub:"kipróbálásra kész",
+                  tosTitle:"Felhasználási feltételek", langTitle:"Nyelv kiválasztása" },
+        "id":   { setup:"Pengaturan VamoraOS",      welcome:"SELAMAT DATANG DI RUMAH BARU ANDA",
+                  tosPrefix:"dengan melanjutkan, Anda menyetujui ", tosLink:"Ketentuan Layanan",
+                  chooser:"Pilih jalur Anda",        install:"Instal",        tryBtn:"Coba",
+                  allSetTitle:"Semuanya siap!",      allSetSub:"siap untuk dicoba",
+                  tosTitle:"Ketentuan Layanan",       langTitle:"Pilih bahasa" },
+        "it":   { setup:"Configurazione VamoraOS",  welcome:"BENVENUTO NELLA TUA NUOVA CASA",
+                  tosPrefix:"continuando, accetti i nostri ", tosLink:"Termini di servizio",
+                  chooser:"Scegli il tuo percorso", install:"Installare",    tryBtn:"Provare",
+                  allSetTitle:"Tutto pronto!",       allSetSub:"è pronto per essere provato",
+                  tosTitle:"Termini di servizio",    langTitle:"Seleziona la lingua" },
+        "ja":   { setup:"VamoraOS セットアップ",     welcome:"新しいホームへようこそ",
+                  tosPrefix:"続行することで ",         tosLink:"利用規約に同意",
+                  chooser:"プランを選択",            install:"インストール",   tryBtn:"試す",
+                  allSetTitle:"準備完了！",           allSetSub:"を試す準備ができました",
+                  tosTitle:"利用規約",                langTitle:"言語を選択" },
+        "ko":   { setup:"VamoraOS 설정",             welcome:"새로운 홈에 오신 것을 환영합니다",
+                  tosPrefix:"계속하면 당사의 ",       tosLink:"서비스 약관에 동의",
+                  chooser:"경로를 선택하세요",        install:"설치",          tryBtn:"체험",
+                  allSetTitle:"모든 준비 완료!",     allSetSub:"체험 준비가 되었습니다",
+                  tosTitle:"서비스 약관",             langTitle:"언어 선택" },
+        "nb":   { setup:"VamoraOS Oppsett",         welcome:"VELKOMMEN TIL DITT NYE HJEM",
+                  tosPrefix:"ved å fortsette godtar du våre ", tosLink:"Vilkår for bruk",
+                  chooser:"Velg din vei",            install:"Installer",     tryBtn:"Prøv",
+                  allSetTitle:"Alt klart!",          allSetSub:"er klar til å prøves",
+                  tosTitle:"Vilkår for bruk",        langTitle:"Velg språk" },
+        "fa":   { setup:"راه‌اندازی VamoraOS",      welcome:"به خانه جدیدتان خوش آمدید",
+                  tosPrefix:"با ادامه دادن، ",       tosLink:"شرایط خدمات را می‌پذیرید",
+                  chooser:"مسیر خود را انتخاب کنید", install:"نصب",          tryBtn:"امتحان",
+                  allSetTitle:"همه چیز آماده است!", allSetSub:"آماده امتحان است",
+                  tosTitle:"شرایط خدمات",            langTitle:"انتخاب زبان" },
+        "pl":   { setup:"Konfiguracja VamoraOS",    welcome:"WITAJ W SWOIM NOWYM DOMU",
+                  tosPrefix:"kontynuując, akceptujesz nasze ", tosLink:"Warunki korzystania",
+                  chooser:"Wybierz swoją ścieżkę",  install:"Zainstaluj",    tryBtn:"Wypróbuj",
+                  allSetTitle:"Wszystko gotowe!",    allSetSub:"jest gotowy do wypróbowania",
+                  tosTitle:"Warunki korzystania",    langTitle:"Wybierz język" },
+        "pt":   { setup:"Configuração VamoraOS",    welcome:"BEM-VINDO À SUA NOVA CASA",
+                  tosPrefix:"ao continuar, você aceita nossos ", tosLink:"Termos de serviço",
+                  chooser:"Escolha o seu caminho",  install:"Instalar",      tryBtn:"Experimentar",
+                  allSetTitle:"Tudo pronto!",        allSetSub:"está pronto para experimentar",
+                  tosTitle:"Termos de serviço",      langTitle:"Selecionar idioma" },
+        "ro":   { setup:"Configurare VamoraOS",     welcome:"BUN VENIT ÎN NOUL TĂU ACASĂ",
+                  tosPrefix:"continuând, ești de acord cu ", tosLink:"Termenii serviciului",
+                  chooser:"Alege calea ta",          install:"Instalează",    tryBtn:"Încearcă",
+                  allSetTitle:"Totul e gata!",       allSetSub:"este gata de încercat",
+                  tosTitle:"Termenii serviciului",   langTitle:"Selectați limba" },
+        "ru":   { setup:"Настройка VamoraOS",       welcome:"ДОБРО ПОЖАЛОВАТЬ В ВАШ НОВЫЙ ДОМ",
+                  tosPrefix:"продолжая, вы принимаете наши ", tosLink:"Условия использования",
+                  chooser:"Выберите путь",           install:"Установить",    tryBtn:"Попробовать",
+                  allSetTitle:"Готово!",             allSetSub:"готов к пробному запуску",
+                  tosTitle:"Условия использования",  langTitle:"Выбрать язык" },
+        "es":   { setup:"Configuración VamoraOS",   welcome:"BIENVENIDO A TU NUEVO HOGAR",
+                  tosPrefix:"al continuar, aceptas nuestros ", tosLink:"Términos de servicio",
+                  chooser:"Elige tu camino",         install:"Instalar",      tryBtn:"Probar",
+                  allSetTitle:"¡Todo listo!",        allSetSub:"está listo para probar",
+                  tosTitle:"Términos de servicio",   langTitle:"Seleccionar idioma" },
+        "sv":   { setup:"VamoraOS Inställning",     welcome:"VÄLKOMMEN TILL DITT NYA HEM",
+                  tosPrefix:"genom att fortsätta godkänner du våra ", tosLink:"Användarvillkor",
+                  chooser:"Välj din väg",            install:"Installera",    tryBtn:"Prova",
+                  allSetTitle:"Allt klart!",         allSetSub:"är redo att prova",
+                  tosTitle:"Användarvillkor",         langTitle:"Välj språk" },
+        "tr":   { setup:"VamoraOS Kurulumu",        welcome:"YENİ EVİNİZE HOŞ GELDİNİZ",
+                  tosPrefix:"devam ederek ",          tosLink:"Hizmet Şartlarımızı kabul edersiniz",
+                  chooser:"Yolunuzu seçin",          install:"Yükle",         tryBtn:"Dene",
+                  allSetTitle:"Her şey hazır!",      allSetSub:"denemeye hazır",
+                  tosTitle:"Hizmet Şartları",         langTitle:"Dil seçin" },
+        "uk":   { setup:"Налаштування VamoraOS",    welcome:"ЛАСКАВО ПРОСИМО ДО ВАШОГО НОВОГО ДОМУ",
+                  tosPrefix:"продовжуючи, ви приймаєте наші ", tosLink:"Умови використання",
+                  chooser:"Оберіть свій шлях",       install:"Встановити",    tryBtn:"Спробувати",
+                  allSetTitle:"Все готово!",         allSetSub:"готовий до спроби",
+                  tosTitle:"Умови використання",     langTitle:"Вибрати мову" },
+        "vi":   { setup:"Thiết lập VamoraOS",       welcome:"CHÀO MỪNG ĐẾN NGÔI NHÀ MỚI CỦA BẠN",
+                  tosPrefix:"bằng cách tiếp tục, bạn đồng ý với ", tosLink:"Điều khoản dịch vụ",
+                  chooser:"Chọn con đường của bạn", install:"Cài đặt",       tryBtn:"Dùng thử",
+                  allSetTitle:"Tất cả đã sẵn sàng!", allSetSub:"sẵn sàng để dùng thử",
+                  tosTitle:"Điều khoản dịch vụ",    langTitle:"Chọn ngôn ngữ" },
+    })
+
+    // Returns the translation object for the active language.
+    // Checks the 5-char prefix first (distinguishes zh_CN from zh_TW),
+    // then the 2-char language code, then falls back to English.
+    readonly property var i18n: {
+        var c5 = root.selectedLang.substring(0, 5)      // e.g. "zh_CN"
+        var c2 = root.selectedLang.split("_")[0]        // e.g. "zh"
+        return _tr[c5] || _tr[c2] || _tr["en"]
+    }
 
     // timer for switching
     Timer {
@@ -154,7 +353,7 @@ Window {
 
         Image {
             anchors.fill: parent
-            source: "assets/background.jpg"
+            source: "assets/backgrounds/background.jpg"
             fillMode: Image.PreserveAspectCrop
         }
 
@@ -251,7 +450,7 @@ Window {
             }
         }
 
-        // ── PAGE 1 : Welcome / ToS ─────────────────────────────────────────
+        // ── PAGE 2 : Welcome / ToS ─────────────────────────────────────────
         Item {
             id: tosPage
             anchors.fill: parent
@@ -285,7 +484,7 @@ Window {
                 }
 
                 Text {
-                    text: "WELCOME TO YOUR NEW HOME"
+                    text: root.i18n.welcome
                     font.family: "Inter"
                     font.pixelSize: Math.min(frostedCard.width * 0.026, 16)
                     font.weight: Font.Medium
@@ -300,14 +499,14 @@ Window {
                     spacing: 0
 
                     Text {
-                        text: "by continuing you are accepting our "
+                        text: root.i18n.tosPrefix
                         font.family: "Inter"
                         font.pixelSize: Math.min(frostedCard.width * 0.024, 14)
                         color: "#555555"
                     }
 
                     Text {
-                        text: "Terms of Service"
+                        text: root.i18n.tosLink
                         font.family: "Inter"
                         font.pixelSize: Math.min(frostedCard.width * 0.024, 14)
                         color: "#4477DD"
@@ -318,14 +517,118 @@ Window {
                             cursorShape: Qt.PointingHandCursor
                             // No internet during setup — show the ToS in-app
                             // instead of trying to open a browser.
-                            onClicked: root.currentPage = 3
+                            onClicked: root.currentPage = 4
                         }
                     }
                 }
             }
         }
 
-        // ── PAGE 2 : Terms of Service (full text, shown in-app) ────────────
+        // ── PAGE 1 : Language Selection ────────────────────────────────────
+        Item {
+            id: langPage
+            anchors.fill: parent
+            opacity: 0
+            visible: opacity > 0
+            property real pageSlide: 0
+            transform: Translate { y: langPage.pageSlide }
+
+            // Header
+            Text {
+                id: langPageTitle
+                anchors.top: parent.top
+                anchors.topMargin: 26
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: root.i18n.langTitle
+                font.family: "Inter"
+                font.pixelSize: Math.min(frostedCard.width * 0.038, 24)
+                font.weight: Font.SemiBold
+                color: "#111111"
+            }
+
+            // Scrollable list
+            ListView {
+                id: langList
+                anchors.top: langPageTitle.bottom
+                anchors.topMargin: 14
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: 82
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.leftMargin: 14
+                anchors.rightMargin: 14
+                clip: true
+                model: root.languages
+                spacing: 3
+                boundsBehavior: Flickable.StopAtBounds
+                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                delegate: Rectangle {
+                    id: langRow
+                    width: langList.width
+                    height: 46
+                    radius: 10
+                    readonly property bool sel: root.selectedLang === modelData.code
+                    color: sel
+                           ? Qt.rgba(0.22, 0.53, 1.0, 0.15)
+                           : langRowHover.containsMouse
+                             ? Qt.rgba(0, 0, 0, 0.05)
+                             : "transparent"
+                    Behavior on color { ColorAnimation { duration: 120 } }
+
+                    HoverHandler { id: langRowHover }
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.selectedLang = modelData.code
+                    }
+
+                    // Native name + English label
+                    Row {
+                        anchors.left: parent.left; anchors.leftMargin: 16
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 10
+
+                        Text {
+                            text: modelData.native
+                            font.family: "Inter"
+                            font.pixelSize: 15
+                            font.weight: langRow.sel ? Font.SemiBold : Font.Normal
+                            color: langRow.sel ? "#2C6FEA" : "#111111"
+                            Behavior on color { ColorAnimation { duration: 120 } }
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Text {
+                            text: modelData.english
+                            font.family: "Inter"
+                            font.pixelSize: 13
+                            color: "#888888"
+                            visible: modelData.english !== ""
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+
+                    // Check mark when selected
+                    Image {
+                        id: langCheckImg
+                        source: "assets/icons/check.svg"
+                        width: 16; height: 16
+                        sourceSize: Qt.size(width, height)
+                        anchors.right: parent.right; anchors.rightMargin: 16
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: false
+                    }
+                    ColorOverlay {
+                        source: langCheckImg
+                        anchors.fill: langCheckImg
+                        color: "#2C6FEA"
+                        visible: langRow.sel
+                    }
+                }
+            }
+        }
+
+        // ── PAGE 4 : Terms of Service (full text, shown in-app) ────────────
         Item {
             id: tosDetailPage
             anchors.fill: parent
@@ -339,7 +642,7 @@ Window {
                 anchors.top: parent.top
                 anchors.topMargin: 28
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "Terms of Service"
+                text: root.i18n.tosTitle
                 font.family: "Inter"
                 font.pixelSize: Math.min(frostedCard.width * 0.045, 24)
                 font.weight: Font.Bold
@@ -397,7 +700,7 @@ Window {
             }
         }
 
-        // ── PAGE 2 : Install or Try ────────────────────────────────────────
+        // ── PAGE 3 : Install or Try ────────────────────────────────────────
         Item {
             id: chooserPage
             anchors.fill: parent
@@ -412,7 +715,7 @@ Window {
                 spacing: 20
 
                 Text {
-                    text: "Choose your path"
+                    text: root.i18n.chooser
                     font.family: "Inter"
                     font.pixelSize: Math.min(frostedCard.width * 0.050, 30)
                     font.weight: Font.Bold
@@ -477,7 +780,7 @@ Window {
                                 Behavior on color { ColorAnimation { duration: 160 } }
                             }
                             Text {
-                                text: "Install"
+                                text: root.i18n.install
                                 font.family: "Inter"
                                 font.pixelSize: Math.min(frostedCard.width * 0.030, 17)
                                 font.weight: Font.SemiBold
@@ -547,7 +850,7 @@ Window {
                                 Behavior on color { ColorAnimation { duration: 160 } }
                             }
                             Text {
-                                text: "Try"
+                                text: root.i18n.tryBtn
                                 font.family: "Inter"
                                 font.pixelSize: Math.min(frostedCard.width * 0.030, 17)
                                 font.weight: Font.SemiBold
@@ -567,7 +870,7 @@ Window {
             }
         }
 
-        // ── PAGE 4 : All set (Try mode confirmed) ──────────────────────────
+        // ── PAGE 5 : All set (Try mode confirmed) ──────────────────────────
         Item {
             id: allSetPage
             anchors.fill: parent
@@ -600,7 +903,7 @@ Window {
                 }
 
                 Text {
-                    text: "You're all set!"
+                    text: root.i18n.allSetTitle
                     font.family: "Inter"
                     font.pixelSize: Math.min(frostedCard.width * 0.075, 44)
                     font.weight: Font.Bold
@@ -609,7 +912,7 @@ Window {
                 }
 
                 Text {
-                    text: root.osName + " is ready to try"
+                    text: root.osName + " " + root.i18n.allSetSub
                     font.family: "Inter"
                     font.pixelSize: Math.min(frostedCard.width * 0.032, 19)
                     font.weight: Font.Normal
@@ -709,21 +1012,25 @@ Window {
                         cursorShape: root.fwdEnabled ? Qt.PointingHandCursor : Qt.ArrowCursor
                         onClicked: {
                             if (!root.hasStarted) {
-                                // First press: morph pill, go to Welcome/ToS
+                                // First press: morph pill, go to Language selection
                                 root.hasStarted  = true
                                 root.currentPage = 1
                             } else if (root.onAllSetPage) {
                                 // All-set page → exit to live session
                                 controller.finish_setup()
+                            } else if (root.onLangPage) {
+                                // Apply the chosen locale then advance to Welcome/ToS
+                                controller.apply_locale(root.selectedLang)
+                                root.currentPage = 2
                             } else if (root.onChooserPage) {
                                 // Commit whichever card was picked
                                 if (root.selectedChoice === "install") {
                                     controller.launch_installer()
                                 } else if (root.selectedChoice === "try") {
-                                    root.currentPage = 4
+                                    root.currentPage = 5
                                 }
-                            } else if (root.currentPage < 2) {
-                                // Page 1 → page 2 (Install/Try chooser)
+                            } else if (root.currentPage < 3) {
+                                // Page 2 (Welcome/ToS) → page 3 (Install/Try chooser)
                                 root.currentPage++
                             }
                         }
@@ -796,7 +1103,7 @@ Window {
         width: parent.width;  height: 32
 
         Text {
-            text: "VamoraOS Setup"
+            text: root.i18n.setup
             anchors.left: parent.left;  anchors.leftMargin: 20
             anchors.verticalCenter: parent.verticalCenter
             font.family: "Inter"
@@ -904,10 +1211,14 @@ Window {
         if (!root._pagesReady) return
 
         var dir      = currentPage > _prevPage ? 1 : -1
-        var allPages = [helloPage, tosPage, chooserPage, tosDetailPage, allSetPage]
+        var allPages = [helloPage, langPage, tosPage, chooserPage, tosDetailPage, allSetPage]
         var leaving  = allPages[_prevPage]
         var entering = allPages[currentPage]
         _prevPage    = currentPage
+
+        // When landing on the language page, scroll the list to the
+        // pre-selected (system) language after the slide-in completes.
+        if (currentPage === 1) scrollToLangTimer.restart()
 
         // Slide + fade the leaving page out
         leavingOpacity.target = leaving
@@ -961,6 +1272,23 @@ Window {
         }
     }
 
+    // Scrolls the language list to the currently selected language.
+    // Delayed so it fires after the page slide-in animation finishes.
+    Timer {
+        id: scrollToLangTimer
+        interval: 460   // slide-in takes ~390 ms + 55 ms delay = ~445 ms
+        repeat: false
+        onTriggered: {
+            if (root.selectedLang === "") return
+            for (var i = 0; i < root.languages.length; i++) {
+                if (root.languages[i].code === root.selectedLang) {
+                    langList.positionViewAtIndex(i, ListView.Center)
+                    return
+                }
+            }
+        }
+    }
+
     // ══════════════════════════════════════════════════════════════════════
     // KEYBOARD SHORTCUTS
     // ══════════════════════════════════════════════════════════════════════
@@ -985,7 +1313,7 @@ Window {
             if (root.selectedChoice === "install") {
                 controller.launch_installer()
             } else if (root.selectedChoice === "try") {
-                root.currentPage = 4
+                root.currentPage = 5
             }
         }
     }

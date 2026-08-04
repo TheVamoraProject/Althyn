@@ -3,7 +3,8 @@
     <qresource prefix="/">
         <file>assets/Vamora.svg</file>
         <file>assets/Vamora.png</file>
-        <file>assets/background.jpg</file>
+        <file>assets/backgrounds/background.jpg</file>
+        <file>assets/backgrounds/background-mobile.jpg</file>
         <file>assets/icons/chevron-left.svg</file>
         <file>assets/icons/chevron-right.svg</file>
         <file>assets/icons/download.svg</file>
