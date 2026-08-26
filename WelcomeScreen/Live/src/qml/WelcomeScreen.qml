@@ -66,6 +66,7 @@ Window {
         { hello: "Merhaba!",      ready: "Hazır mısın?"          },
         { hello: "नमस्ते!",       ready: "क्या आप तैयार हैं?"    },
         { hello: "Hej!",          ready: "Är du redo?"           },
+        { hello: "Cześć!",          ready: "Czy jesteś gotowy?"           },
         { hello: "سلام!",         ready: "آماده‌ای؟"             },
         { hello: "Γεια σου!",     ready: "Είσαι έτοιμος;"        },
         { hello: "Hello!",        ready: "C'mon start the setup already"        },
