@@ -1,0 +1,15 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <qresource prefix="/">
+        <file>assets/icons/account.svg</file>
+        <file>assets/icons/lock.svg</file>
+        <file>assets/icons/moon.svg</file>
+        <file>assets/icons/hibernate.svg</file>
+        <file>assets/icons/logout.svg</file>
+        <file>assets/icons/restart.svg</file>
+        <file>assets/icons/shutdown.svg</file>
+        <file>assets/fonts/inter/Inter-Regular.ttf</file>
+        <file>assets/fonts/inter/Inter-Medium.ttf</file>
+        <file>assets/fonts/inter/Inter-SemiBold.ttf</file>
+    </qresource>
+</RCC>
