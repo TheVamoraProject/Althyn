@@ -1,0 +1,11 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <qresource prefix="/">
+        <file>assets/unknown.png</file>
+        <file>assets/terminal.png</file>
+        <file>assets/search.svg</file>
+        <file>assets/fonts/inter/Inter-Regular.ttf</file>
+        <file>assets/fonts/inter/Inter-Medium.ttf</file>
+        <file>assets/fonts/inter/Inter-SemiBold.ttf</file>
+    </qresource>
+</RCC>
