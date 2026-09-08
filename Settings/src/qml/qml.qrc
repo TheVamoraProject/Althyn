@@ -1,0 +1,22 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <qresource prefix="/">
+        <file>main.qml</file>
+        <file>components/NavItem.qml</file>
+        <file>components/ToggleRow.qml</file>
+        <file>components/SettingsRow.qml</file>
+        <file>components/SectionHeader.qml</file>
+        <file>components/WifiBar.qml</file>
+        <file>pages/AboutPage.qml</file>
+        <file>pages/ConnectionsPage.qml</file>
+        <file>pages/ConnectedDevicesPage.qml</file>
+        <file>pages/VamifyPage.qml</file>
+        <file>pages/SecurityPage.qml</file>
+        <file>pages/AccessibilityPage.qml</file>
+        <file>pages/HelpPage.qml</file>
+        <file>pages/HelpWebView.qml</file>
+        <file>pages/AppsPage.qml</file>
+        <file>pages/AppSettingsPage.qml</file>
+        <file>assets/vamify-wallpaper.svg</file>
+    </qresource>
+</RCC>
