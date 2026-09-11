@@ -13,7 +13,7 @@
 - **Tablet:** two-column density, navigation grows with the width
 - **Desktop:** full grid density, side navigation, room for everything
 
-## Rust Workspace
+## Build
 
 The desktop environment components are managed as one Cargo workspace. Build
 all components from the repository root:
