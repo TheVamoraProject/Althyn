@@ -1,0 +1,7 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <qresource prefix="/">
+        <file>layouts/components/DockIcon.qml</file>
+        <file>layouts/dock/dock.qml</file>
+    </qresource>
+</RCC>

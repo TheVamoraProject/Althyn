@@ -1,0 +1,15 @@
+[package]
+name = "vamora-dock"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+cxx = "1.0.197"
+cxx-qt = "0.9.1"
+cxx-qt-lib = { version = "0.9.1", features = ["qt_gui", "qt_qml"] }
+# X11-only for now (pre-alpha targets Openbox): used to check whether the
+# active window is maximized so the dock can auto-hide, à la macOS.
+x11rb = "0.13"
+
+[build-dependencies]
+cxx-qt-build = "0.9.1"

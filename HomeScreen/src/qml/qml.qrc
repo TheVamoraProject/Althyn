@@ -1,0 +1,9 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <qresource prefix="/">
+        <file>layouts/homescreen/window.qml</file>
+        <file>layouts/homescreen/HomePage.qml</file>
+        <file>layouts/homescreen/AppTile.qml</file>
+        <file>layouts/homescreen/ContextMenu.qml</file>
+    </qresource>
+</RCC>

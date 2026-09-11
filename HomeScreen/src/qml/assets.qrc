@@ -1,0 +1,15 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <qresource prefix="/">
+        <file>assets/Vamora.svg</file>
+        <file>assets/icons/unknown.svg</file>
+        <file>assets/icons/star.svg</file>
+        <file>assets/icons/home.svg</file>
+        <file>assets/icons/search.svg</file>
+        <file>assets/icons/info.svg</file>
+        <file>assets/icons/power.svg</file>
+        <file>assets/icons/apps.svg</file>
+        <file>assets/icons/monitor.svg</file>
+        <file>assets/icons/pin-off.svg</file>
+    </qresource>
+</RCC>

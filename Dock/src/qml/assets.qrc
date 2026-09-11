@@ -1,0 +1,10 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <qresource prefix="/">
+        <file>assets/icons/dock/calculator.png</file>
+        <file>assets/icons/dock/calendar.png</file>
+        <file>assets/icons/dock/camera.png</file>
+        <file>assets/icons/dock/clock.png</file>
+        <file>assets/icons/dock/compass.png</file>
+    </qresource>
+</RCC>
