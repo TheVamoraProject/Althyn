@@ -1,0 +1,11 @@
+[workspace]
+resolver = "3"
+members = [
+    "Dock",
+    "HomeScreen",
+    "Launcher",
+    "PowerMenu",
+    "Settings",
+    "StatusBar",
+    "WelcomeScreen/Live",
+]
