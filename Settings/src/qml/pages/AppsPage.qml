@@ -32,6 +32,18 @@ Item {
 
         Item { height: 28 }
 
+        Text {
+            Layout.fillWidth: true
+            Layout.leftMargin: 28
+            Layout.rightMargin: 28
+            text: "Apps"
+            color: appsPage.pageText
+            font.pixelSize: 26
+            font.bold: true
+        }
+
+        Item { height: 14 }
+
         // Search
         Rectangle {
             Layout.fillWidth: true; Layout.leftMargin: 28; Layout.rightMargin: 28

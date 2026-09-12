@@ -1,331 +1,813 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import dev.vamoraos.SysInfo 1.0
 import "../components"
 
 Item {
     id: connectionsPage
-    anchors.fill: parent
+
+    property string activeSection: "overview"
+
     readonly property var settingsWindow: ApplicationWindow.window
-    readonly property bool dark: !settingsWindow || settingsWindow.darkTheme
-    readonly property color pageCard: dark ? "#18181b" : "#ffffff"
-    readonly property color pageHover: dark ? "#27272a" : "#f4f4f5"
-    readonly property color pageBorder: dark ? "#27272a" : "#e4e4e7"
-    readonly property color pageText: dark ? "#f4f4f5" : "#18181b"
-    readonly property color pageMuted: dark ? "#a1a1aa" : "#71717a"
-    readonly property color pageAccent: settingsWindow && settingsWindow.accentColor !== undefined
-                                        ? settingsWindow.accentColor : "#7dd3fc"
 
-    // ── Mock state ────────────────────────────────────────────────────────────
-    property bool wifiOn: true
-    property bool btOn:   true
-    property bool vpnAdded: false
-
-    ListModel {
-        id: wifiModel
-        ListElement { ssid: "VamoraNet_5G"; strength: 95; secured: true;  connected: true  }
-        ListElement { ssid: "HomeNetwork";  strength: 72; secured: true;  connected: false }
-        ListElement { ssid: "GuestWifi";    strength: 48; secured: false; connected: false }
-        ListElement { ssid: "Office_5GHz";  strength: 31; secured: true;  connected: false }
-        ListElement { ssid: "Neighbor_AP";  strength: 15; secured: true;  connected: false }
+    property string currentTheme: {
+        var value = SysInfo.getAppearanceTheme()
+        return value === "light" || value === "dark" ? value : "dark"
     }
 
-    ListModel {
-        id: btModel
-        ListElement { name: "AirPods Pro"; icon: "volume-1"; paired: true; connected: true }
-        ListElement { name: "MX Keys Mini"; icon: "app-window"; paired: true; connected: true }
-        ListElement { name: "Logitech MX3"; icon: "mouse-pointer-2"; paired: true; connected: false }
-        ListElement { name: "JBL Flip 6"; icon: "volume-2"; paired: false; connected: false }
+    property string accentColor: {
+        var value = SysInfo.getAccentColor()
+        return value.indexOf("error") !== 0 ? value : "#3b82f6"
     }
 
-    // Password dialog
-    Dialog {
-        id: pwDialog
-        property string target: ""
-        property int targetIndex: -1
-        parent: Overlay.overlay
-        anchors.centerIn: parent
-        width: 320; modal: true
-        background: Rectangle { color: "#1e1e1e"; radius: 16; border { color: "#2c2c2c"; width: 1 } }
+    readonly property color pageCard:
+        currentTheme === "light" ? "#ffffff" : "#1e1e1e"
 
-        header: Item {
-            height: 54
-            Text {
-                anchors { left: parent.left; leftMargin: 20; verticalCenter: parent.verticalCenter }
-                text: "Connect to " + pwDialog.target
-                color: "#f5f5f5"; font { pixelSize: 15; weight: Font.Medium }
+    readonly property color pageText:
+        currentTheme === "light" ? "#1b1d22" : "#f0f0f0"
+
+    readonly property color pageMuted:
+        currentTheme === "light" ? "#68717e" : "#777777"
+
+    readonly property color pageBorder:
+        currentTheme === "light" ? "#d7dbe2" : "#2c2c2c"
+
+    readonly property color pageHover:
+        currentTheme === "light" ? "#eef0f3" : "#252525"
+
+    property bool wifiEnabled: true
+    property bool bluetoothEnabled: true
+    property bool airplaneMode: false
+    property bool ethernetConnected: true
+
+    property bool vpnConnected: false
+    property bool privateDnsEnabled: false
+    property bool printingEnabled: true
+
+    Timer {
+        interval: 1500
+        running: true
+        repeat: true
+
+        onTriggered: {
+            var theme = SysInfo.getAppearanceTheme()
+
+            if (theme === "light" || theme === "dark")
+                connectionsPage.currentTheme = theme
+
+            var accent = SysInfo.getAccentColor()
+
+            if (accent.indexOf("error") !== 0)
+                connectionsPage.accentColor = accent
+        }
+    }
+
+    component Card: Rectangle {
+        default property alias contentData: cardContent.data
+
+        Layout.fillWidth: true
+        radius: 14
+        color: connectionsPage.pageCard
+        border.color: connectionsPage.pageBorder
+        border.width: 1
+        clip: true
+
+        implicitHeight: cardContent.implicitHeight
+
+        Column {
+            id: cardContent
+
+            anchors.left: parent.left
+            anchors.right: parent.right
+
+            spacing: 0
+        }
+    }
+
+    component ConnectionToggleRow: Item {
+        id: connectionRow
+
+        property string rowLabel: ""
+        property string rowSub: ""
+        property bool rowOn: false
+        property string targetSection: ""
+
+        width: parent ? parent.width : 0
+        height: toggleRow.height
+
+        ToggleRow {
+            id: toggleRow
+
+            width: parent.width
+
+            rowLabel: connectionRow.rowLabel
+            rowSub: connectionRow.rowSub
+            on_: connectionRow.rowOn
+            isFirst: true
+
+            onToggled: function(value) {
+                connectionRow.rowOn = value
             }
         }
 
-        ColumnLayout {
-            spacing: 10; width: parent.width
-            Text { text: "Password"; color: "#666666"; font.pixelSize: 12 }
-            Rectangle {
-                Layout.fillWidth: true; height: 42; radius: 10
-                color: "#141414"; border { color: pwInput.activeFocus ? "#3b82f6" : "#333"; width: 1 }
-                TextInput {
-                    id: pwInput
-                    anchors { fill: parent; leftMargin: 14; rightMargin: 14 }
-                    verticalAlignment: TextInput.AlignVCenter
-                    color: "#f5f5f5"; font.pixelSize: 14
-                    echoMode: TextInput.Password
-                    placeholderText: "Enter password"; placeholderTextColor: "#444"
+        MouseArea {
+            anchors.left: parent.left
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            anchors.right: parent.right
+            anchors.rightMargin: 70
+
+            cursorShape: Qt.PointingHandCursor
+
+            onClicked: {
+                connectionsPage.activeSection =
+                        connectionRow.targetSection
+            }
+        }
+    }
+
+    function sectionTitle() {
+        switch (activeSection) {
+        case "wifi":
+            return "Wi-Fi"
+
+        case "bluetooth":
+            return "Bluetooth"
+
+        case "vpn":
+            return "VPN"
+
+        case "privateDns":
+            return "Private DNS"
+
+        case "printing":
+            return "Printing"
+
+        case "airplane":
+            return "Airplane Mode"
+
+        default:
+            return "Connections"
+        }
+    }
+
+    ColumnLayout {
+        anchors.fill: parent
+        anchors.margins: 24
+
+        spacing: 18
+
+        // ================================================================
+        // HEADER
+        // ================================================================
+
+        // The app-level mobile header (in main.qml) already shows this
+        // page's title and back button on mobile, so this in-page header
+        // would just duplicate it. Only render it in the wide desktop
+        // layout — same pattern as AboutPage and VamifyPage.
+        RowLayout {
+            visible: !connectionsPage.settingsWindow || !connectionsPage.settingsWindow.isMobile
+            Layout.fillWidth: true
+            spacing: 12
+
+            ToolButton {
+                id: backButton
+
+                visible: connectionsPage.activeSection !== "overview"
+
+                text: "‹"
+
+                font.pixelSize: 32
+                font.bold: false
+
+                implicitWidth: 42
+                implicitHeight: 42
+
+                contentItem: Text {
+                    text: backButton.text
+
+                    color: connectionsPage.pageText
+
+                    font: backButton.font
+
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+
+                background: Rectangle {
+                    color: backButton.hovered
+                           ? connectionsPage.pageHover
+                           : "transparent"
+
+                    radius: 10
+                }
+
+                onClicked: {
+                    connectionsPage.activeSection = "overview"
                 }
             }
+
+            Label {
+                Layout.fillWidth: true
+
+                text: connectionsPage.sectionTitle()
+
+                color: connectionsPage.pageText
+
+                font.pixelSize: 26
+                font.bold: true
+            }
         }
 
-        footer: RowLayout {
-            padding: 14; spacing: 8
-            Item { Layout.fillWidth: true }
-            Rectangle {
-                width: 80; height: 34; radius: 8; color: "#2a2a2a"
-                Text { anchors.centerIn: parent; text: "Cancel"; color: "#888"; font.pixelSize: 13 }
-                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: pwDialog.reject() }
-            }
-            Rectangle {
-                width: 90; height: 34; radius: 8; color: "#3b82f6"
-                Text { anchors.centerIn: parent; text: "Connect"; color: "#fff"; font.pixelSize: 13; font.weight: Font.Medium }
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        if (pwDialog.targetIndex >= 0)
-                            wifiModel.setProperty(pwDialog.targetIndex, "connected", true)
-                        pwDialog.accept()
-                        pwInput.text = ""
-                    }
+        // ================================================================
+        // PAGES
+        // ================================================================
+
+        StackLayout {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+
+            currentIndex: {
+                switch (connectionsPage.activeSection) {
+                case "wifi":
+                    return 1
+
+                case "bluetooth":
+                    return 2
+
+                case "vpn":
+                    return 3
+
+                case "privateDns":
+                    return 4
+
+                case "printing":
+                    return 5
+
+                case "airplane":
+                    return 6
+
+                default:
+                    return 0
                 }
             }
-        }
-    }
 
-    ScrollView {
+            // ============================================================
+            // OVERVIEW
+            // ============================================================
 
-        // Kinetic/touch scrolling: rubber-band overshoot + tuned flick
-        // feel so dragging with a finger (VamoraFold, touch panels) works
-        // like a native scroller, not just mouse-wheel/scrollbar drag.
-        Component.onCompleted: {
-            contentItem.boundsBehavior = Flickable.DragAndOvershootBounds
-            contentItem.maximumFlickVelocity = 2500
-            contentItem.flickDeceleration = 1500
-        }
-        anchors.fill: parent; contentWidth: availableWidth; ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+            Flickable {
+                contentWidth: width
+                contentHeight: overviewColumn.implicitHeight
 
-        ColumnLayout {
-            width: parent.width; spacing: 0
-            Item { height: 28 }
+                clip: true
 
-            ColumnLayout {
-                Layout.fillWidth: true; Layout.leftMargin: 28; Layout.rightMargin: 28; spacing: 14
+                ScrollBar.vertical: ScrollBar {}
 
-                // ── WiFi ──────────────────────────────────────────────────────
-                SectionHeader { label: "WiFi" }
+                ColumnLayout {
+                    id: overviewColumn
 
-                Rectangle {
-                    Layout.fillWidth: true; radius: 24; color: connectionsPage.pageCard
-                    border.color: connectionsPage.pageBorder; border.width: 1; clip: true
-                    implicitHeight: wifiGroup.implicitHeight
+                    width: parent.width
+                    spacing: 14
 
-                    Column {
-                        id: wifiGroup
-                        anchors { left: parent.left; right: parent.right }
+                    // ----------------------------------------------------
+                    // Main connections
+                    // ----------------------------------------------------
 
-                        // Toggle
+                    Card {
+
+                        ConnectionToggleRow {
+                            rowLabel: "Wi-Fi"
+
+                            rowSub: connectionsPage.wifiEnabled
+                                     ? "On"
+                                     : "Off"
+
+                            rowOn: connectionsPage.wifiEnabled
+
+                            targetSection: "wifi"
+
+                            onRowOnChanged: {
+                                connectionsPage.wifiEnabled = rowOn
+                            }
+                        }
+
+                        ConnectionToggleRow {
+                            rowLabel: "Bluetooth"
+
+                            rowSub: connectionsPage.bluetoothEnabled
+                                     ? "On"
+                                     : "Off"
+
+                            rowOn: connectionsPage.bluetoothEnabled
+
+                            targetSection: "bluetooth"
+
+                            onRowOnChanged: {
+                                connectionsPage.bluetoothEnabled = rowOn
+                            }
+                        }
+
+                        SettingsRow {
+                            width: parent.width
+
+                            rowLabel: "Ethernet"
+
+                            rowValue: connectionsPage.ethernetConnected
+                                      ? "Connected"
+                                      : "Not connected"
+
+                            rowIcon: ""
+
+                            tappable: false
+                        }
+
                         ToggleRow {
                             width: parent.width
-                            rowLabel: "WiFi"; rowSub: wifiOn ? "Connected to " + wifiModel.get(0).ssid : "Off"
-                            on_: wifiOn; isFirst: true
-                            onToggled: function(v) { wifiOn = v }
-                        }
 
-                        // Scan row
-                        Rectangle {
-                            width: parent.width; height: 42; color: "transparent"
-                            visible: wifiOn
+                            rowLabel: "Airplane Mode"
 
-                            Rectangle { anchors { left: parent.left; right: parent.right; leftMargin: 16; top: parent.top }; height: 1; color: "#252525" }
+                            rowSub: connectionsPage.airplaneMode
+                                     ? "On"
+                                     : "Off"
 
-                            RowLayout {
-                                anchors { fill: parent; leftMargin: 16; rightMargin: 16 }
-                                Text { text: "Scan for networks"; color: "#3b82f6"; font.pixelSize: 13; Layout.fillWidth: true }
-                                Text { text: wifiModel.count + " found"; color: "#444"; font.pixelSize: 12 }
+                            on_: connectionsPage.airplaneMode
+
+                            onToggled: function(value) {
+                                connectionsPage.airplaneMode = value
                             }
-                                         MouseArea {
-                                             anchors.fill: parent
-                                             cursorShape: Qt.PointingHandCursor
-                                             onClicked: wifiModel.setProperty(index, "connected", false)
-                                         }
+                        }
+                    }
+
+                    // ----------------------------------------------------
+                    // Other connections
+                    // ----------------------------------------------------
+
+                    Card {
+
+                        SettingsRow {
+                            width: parent.width
+
+                            rowLabel: "VPN"
+
+                            rowValue: connectionsPage.vpnConnected
+                                      ? "Connected"
+                                      : "Not connected"
+
+                            rowIcon: "shield-check"
+
+                            tappable: true
+
+                            onTapped: {
+                                connectionsPage.activeSection = "vpn"
+                            }
                         }
 
-                        // Network list
-                        Repeater {
-                            model: wifiOn ? wifiModel : null
-                            delegate: Rectangle {
-                                required property string ssid
-                                required property int    strength
-                                required property bool   secured
-                                required property bool   connected
-                                required property int    index
-                                width: wifiGroup.width; height: 58
-                                color: nhov ? "#252525" : "transparent"
-                                Behavior on color { ColorAnimation { duration: 100 } }
-                                property bool nhov: false
+                        SettingsRow {
+                            width: parent.width
 
-                                Rectangle { anchors { left: parent.left; right: parent.right; leftMargin: 16; top: parent.top }; height: 1; color: "#252525" }
+                            rowLabel: "Private DNS"
 
-                                RowLayout {
-                                    anchors { fill: parent; leftMargin: 16; rightMargin: 16 }; spacing: 12
+                            rowValue: connectionsPage.privateDnsEnabled
+                                      ? "Enabled"
+                                      : "Automatic"
 
-                                    WifiBar { strength: parent.parent.strength; connected: parent.parent.connected; secured: parent.parent.secured }
+                            rowIcon: "settings"
 
-                                    ColumnLayout {
-                                        Layout.fillWidth: true; spacing: 2
-                                        Text {
-                                            text: ssid; color: "#f0f0f0"
-                                            font { pixelSize: 13; weight: connected ? Font.Medium : Font.Normal }
-                                            elide: Text.ElideRight; Layout.fillWidth: true
-                                        }
-                                        Text {
-                                            text: connected ? "Connected" : (secured ? "Secured · " + strength + "%" : "Open · " + strength + "%")
-                                            color: connected ? "#3b82f6" : "#555555"
-                                            font.pixelSize: 11
-                                        }
-                                    }
+                            tappable: true
 
-                                    Rectangle {
-                                        visible: connected
-                                        width: 68; height: 26; radius: 7; color: "#2a1515"
-                                        border { color: "#ef444430"; width: 1 }
-                                        Text { anchors.centerIn: parent; text: "Disconnect"; color: "#ef4444"; font.pixelSize: 11 }
-                                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor }
-                                    }
-                                }
+                            onTapped: {
+                                connectionsPage.activeSection =
+                                        "privateDns"
+                            }
+                        }
 
-                                MouseArea {
-                                    anchors.fill: parent; hoverEnabled: true
-                                    enabled: !connected; cursorShape: Qt.PointingHandCursor
-                                    onEntered: parent.nhov = true; onExited: parent.nhov = false
-                                     onClicked: {
-                                         pwDialog.target = ssid
-                                         pwDialog.targetIndex = index
-                                         if (secured) pwDialog.open()
-                                         else wifiModel.setProperty(index, "connected", true)
-                                     }
-                                }
+                        SettingsRow {
+                            width: parent.width
+
+                            rowLabel: "Printing"
+
+                            rowValue: connectionsPage.printingEnabled
+                                      ? "On"
+                                      : "Off"
+
+                            rowIcon: "hard-drive"
+
+                            tappable: true
+
+                            onTapped: {
+                                connectionsPage.activeSection =
+                                        "printing"
                             }
                         }
                     }
                 }
+            }
 
-                // ── Bluetooth ─────────────────────────────────────────────────
-                SectionHeader { label: "Bluetooth" }
+            // ============================================================
+            // WI-FI
+            // ============================================================
 
-                Rectangle {
-                    Layout.fillWidth: true; radius: 24; color: connectionsPage.pageCard
-                    border.color: connectionsPage.pageBorder; border.width: 1; clip: true
-                    implicitHeight: btGroup.implicitHeight
+            Flickable {
+                contentWidth: width
+                contentHeight: wifiColumn.implicitHeight
 
-                    Column {
-                        id: btGroup
-                        anchors { left: parent.left; right: parent.right }
+                clip: true
+
+                ScrollBar.vertical: ScrollBar {}
+
+                ColumnLayout {
+                    id: wifiColumn
+
+                    width: parent.width
+                    spacing: 14
+
+                    Card {
 
                         ToggleRow {
-                            width: parent.width; rowLabel: "Bluetooth"
-                            rowSub: btOn ? "2 devices connected" : "Off"
-                            on_: btOn; isFirst: true
-                            onToggled: function(v) { btOn = v }
-                        }
+                            width: parent.width
 
-                        Repeater {
-                            model: btOn ? btModel : null
-                            delegate: Rectangle {
-                                required property string name
-                                required property string icon
-                                required property bool   paired
-                                required property bool   connected
-                                required property int    index
-                                width: btGroup.width; height: 58
-                                color: bhov ? "#252525" : "transparent"
-                                Behavior on color { ColorAnimation { duration: 100 } }
-                                property bool bhov: false
+                            rowLabel: "Wi-Fi"
 
-                                Rectangle { anchors { left: parent.left; right: parent.right; leftMargin: 16; top: parent.top }; height: 1; color: "#252525" }
+                            rowSub: connectionsPage.wifiEnabled
+                                     ? "Enabled"
+                                     : "Disabled"
 
-                                RowLayout {
-                                    anchors { fill: parent; leftMargin: 16; rightMargin: 16 }; spacing: 12
+                            on_: connectionsPage.wifiEnabled
 
-                                    Rectangle {
-                                        width: 36; height: 36; radius: 18
-                                        color: connected ? Qt.rgba(0.49,0.83,0.98,0.16)
-                                                         : (connectionsPage.dark ? "#27272a" : "#f4f4f5")
-                                        Image {
-                                            anchors.centerIn: parent
-                                            width: 18; height: 18
-                                            source: "../assets/icons/" + icon + ".svg"
-                                            sourceSize: Qt.size(36, 36)
-                                            opacity: connected ? 1 : 0.65
-                                        }
-                                    }
+                            isFirst: true
 
-                                    ColumnLayout {
-                                        Layout.fillWidth: true; spacing: 2
-                                        Text { text: name; color: "#f0f0f0"; font { pixelSize: 13; weight: connected ? Font.Medium : Font.Normal }; elide: Text.ElideRight; Layout.fillWidth: true }
-                                        Text {
-                                            text: connected ? "Connected" : (paired ? "Paired, not connected" : "Available")
-                                            color: connected ? "#3b82f6" : "#555"
-                                            font.pixelSize: 11
-                                        }
-                                    }
-
-                                    Rectangle {
-                                        width: connected ? 76 : 58; height: 26; radius: 7
-                                        color: connected ? "#1a2a1a" : "#1a1a2a"
-                                        border { color: connected ? "#22c55e30" : "#3b82f630"; width: 1 }
-                                        Text {
-                                            anchors.centerIn: parent
-                                            text: connected ? "Disconnect" : (paired ? "Connect" : "Pair")
-                                            color: connected ? "#22c55e" : "#3b82f6"
-                                            font.pixelSize: 11
-                                        }
-                                         MouseArea {
-                                             anchors.fill: parent
-                                             cursorShape: Qt.PointingHandCursor
-                                             onClicked: btModel.setProperty(index, "connected", !connected)
-                                         }
-                                    }
-                                }
-
-                                MouseArea { anchors.fill: parent; hoverEnabled: true; onEntered: parent.bhov = true; onExited: parent.bhov = false }
+                            onToggled: function(value) {
+                                connectionsPage.wifiEnabled = value
                             }
                         }
                     }
-                }
 
-                // ── VPN ───────────────────────────────────────────────────────
-                SectionHeader { label: "VPN" }
+                    Card {
 
-                Rectangle {
-                    Layout.fillWidth: true; radius: 24; color: connectionsPage.pageCard
-                    border.color: connectionsPage.pageBorder; border.width: 1
-                    height: 62
+                        SettingsRow {
+                            width: parent.width
 
-                    RowLayout {
-                        anchors { fill: parent; leftMargin: 16; rightMargin: 16 }
-                        Text { text: "No VPN configured"; color: "#444"; font.pixelSize: 13; Layout.fillWidth: true }
-                        Rectangle {
-                            width: 60; height: 28; radius: 8; color: "#1e2a3a"
-                            border { color: "#3b82f620"; width: 1 }
-                             Text { anchors.centerIn: parent; text: vpnAdded ? "Added" : "+ Add"; color: "#3b82f6"; font.pixelSize: 12 }
-                             MouseArea {
-                                 anchors.fill: parent
-                                 cursorShape: Qt.PointingHandCursor
-                                 onClicked: vpnAdded = !vpnAdded
-                             }
+                            rowLabel: "Available networks"
+                            rowValue: "Scan"
+                            rowIcon: "search"
+
+                            tappable: true
+                        }
+
+                        SettingsRow {
+                            width: parent.width
+
+                            rowLabel: "Saved networks"
+                            rowValue: ""
+                            rowIcon: ""
+
+                            tappable: true
+                        }
+
+                        SettingsRow {
+                            width: parent.width
+
+                            rowLabel: "Wi-Fi preferences"
+                            rowValue: ""
+                            rowIcon: "settings"
+
+                            tappable: true
                         }
                     }
                 }
+            }
 
-                Item { height: 28 }
+            // ============================================================
+            // BLUETOOTH
+            // ============================================================
+
+            Flickable {
+                contentWidth: width
+                contentHeight: bluetoothColumn.implicitHeight
+
+                clip: true
+
+                ScrollBar.vertical: ScrollBar {}
+
+                ColumnLayout {
+                    id: bluetoothColumn
+
+                    width: parent.width
+                    spacing: 14
+
+                    Card {
+
+                        ToggleRow {
+                            width: parent.width
+
+                            rowLabel: "Bluetooth"
+
+                            rowSub: connectionsPage.bluetoothEnabled
+                                     ? "Enabled"
+                                     : "Disabled"
+
+                            on_: connectionsPage.bluetoothEnabled
+
+                            isFirst: true
+
+                            onToggled: function(value) {
+                                connectionsPage.bluetoothEnabled = value
+                            }
+                        }
+                    }
+
+                    Card {
+
+                        SettingsRow {
+                            width: parent.width
+
+                            rowLabel: "Pair new device"
+                            rowValue: ""
+                            rowIcon: ""
+
+                            tappable: true
+                        }
+
+                        SettingsRow {
+                            width: parent.width
+
+                            rowLabel: "Paired devices"
+                            rowValue: ""
+                            rowIcon: "computer"
+
+                            tappable: true
+                        }
+
+                        SettingsRow {
+                            width: parent.width
+
+                            rowLabel: "Bluetooth preferences"
+                            rowValue: ""
+                            rowIcon: "settings"
+
+                            tappable: true
+                        }
+                    }
+                }
+            }
+
+            // ============================================================
+            // VPN
+            // ============================================================
+
+            Flickable {
+                contentWidth: width
+                contentHeight: vpnColumn.implicitHeight
+
+                clip: true
+
+                ScrollBar.vertical: ScrollBar {}
+
+                ColumnLayout {
+                    id: vpnColumn
+
+                    width: parent.width
+                    spacing: 14
+
+                    Card {
+
+                        ToggleRow {
+                            width: parent.width
+
+                            rowLabel: "VPN"
+
+                            rowSub: connectionsPage.vpnConnected
+                                     ? "Connected"
+                                     : "Not connected"
+
+                            on_: connectionsPage.vpnConnected
+
+                            isFirst: true
+
+                            onToggled: function(value) {
+                                connectionsPage.vpnConnected = value
+                            }
+                        }
+                    }
+
+                    Card {
+
+                        SettingsRow {
+                            width: parent.width
+
+                            rowLabel: "Add VPN"
+                            rowValue: ""
+                            rowIcon: ""
+
+                            tappable: true
+                        }
+
+                        SettingsRow {
+                            width: parent.width
+
+                            rowLabel: "VPN preferences"
+                            rowValue: ""
+                            rowIcon: "settings"
+
+                            tappable: true
+                        }
+                    }
+                }
+            }
+
+            // ============================================================
+            // PRIVATE DNS
+            // ============================================================
+
+            Flickable {
+                contentWidth: width
+                contentHeight: privateDnsColumn.implicitHeight
+
+                clip: true
+
+                ScrollBar.vertical: ScrollBar {}
+
+                ColumnLayout {
+                    id: privateDnsColumn
+
+                    width: parent.width
+                    spacing: 14
+
+                    Card {
+
+                        ToggleRow {
+                            width: parent.width
+
+                            rowLabel: "Private DNS"
+
+                            rowSub: connectionsPage.privateDnsEnabled
+                                     ? "Enabled"
+                                     : "Automatic"
+
+                            on_: connectionsPage.privateDnsEnabled
+
+                            isFirst: true
+
+                            onToggled: function(value) {
+                                connectionsPage.privateDnsEnabled = value
+                            }
+                        }
+                    }
+
+                    Card {
+
+                        SettingsRow {
+                            width: parent.width
+
+                            rowLabel: "Private DNS mode"
+
+                            rowValue: connectionsPage.privateDnsEnabled
+                                      ? "Provider"
+                                      : "Automatic"
+
+                            rowIcon: "settings"
+
+                            tappable: true
+                        }
+
+                        SettingsRow {
+                            width: parent.width
+
+                            rowLabel: "DNS provider"
+
+                            rowValue: ""
+                            rowIcon: ""
+
+                            tappable: true
+                        }
+                    }
+                }
+            }
+
+            // ============================================================
+            // PRINTING
+            // ============================================================
+
+            Flickable {
+                contentWidth: width
+                contentHeight: printingColumn.implicitHeight
+
+                clip: true
+
+                ScrollBar.vertical: ScrollBar {}
+
+                ColumnLayout {
+                    id: printingColumn
+
+                    width: parent.width
+                    spacing: 14
+
+                    Card {
+
+                        ToggleRow {
+                            width: parent.width
+
+                            rowLabel: "Printing"
+
+                            rowSub: connectionsPage.printingEnabled
+                                     ? "Enabled"
+                                     : "Disabled"
+
+                            on_: connectionsPage.printingEnabled
+
+                            isFirst: true
+
+                            onToggled: function(value) {
+                                connectionsPage.printingEnabled = value
+                            }
+                        }
+                    }
+
+                    Card {
+
+                        SettingsRow {
+                            width: parent.width
+
+                            rowLabel: "Default printer"
+
+                            rowValue: "None"
+
+                            rowIcon: "hard-drive"
+
+                            tappable: true
+                        }
+
+                        SettingsRow {
+                            width: parent.width
+
+                            rowLabel: "Add printer"
+
+                            rowValue: ""
+                            rowIcon: ""
+
+                            tappable: true
+                        }
+                    }
+                }
+            }
+
+            // ============================================================
+            // AIRPLANE MODE
+            // ============================================================
+
+            Flickable {
+                contentWidth: width
+                contentHeight: airplaneColumn.implicitHeight
+
+                clip: true
+
+                ScrollBar.vertical: ScrollBar {}
+
+                ColumnLayout {
+                    id: airplaneColumn
+
+                    width: parent.width
+                    spacing: 14
+
+                    Card {
+
+                        ToggleRow {
+                            width: parent.width
+
+                            rowLabel: "Airplane Mode"
+
+                            rowSub: connectionsPage.airplaneMode
+                                     ? "On"
+                                     : "Off"
+
+                            on_: connectionsPage.airplaneMode
+
+                            isFirst: true
+
+                            onToggled: function(value) {
+                                connectionsPage.airplaneMode = value
+                            }
+                        }
+                    }
+
+                    Card {
+
+                        Label {
+                            Layout.fillWidth: true
+                            Layout.margins: 18
+
+                            text: "Airplane Mode disables wireless connections such as Wi-Fi and Bluetooth."
+
+                            wrapMode: Text.WordWrap
+
+                            color: connectionsPage.pageMuted
+
+                            font.pixelSize: 14
+                        }
+                    }
+                }
             }
         }
     }

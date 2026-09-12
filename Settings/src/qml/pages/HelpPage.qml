@@ -69,6 +69,18 @@ Item {
             anchors.fill: parent
             spacing: 0
 
+            Text {
+                Layout.fillWidth: true
+                Layout.leftMargin: 28
+                Layout.rightMargin: 28
+                Layout.topMargin: 20
+                Layout.bottomMargin: 14
+                text: "Help & Support"
+                color: helpPage.txtPrimary
+                font.pixelSize: 26
+                font.bold: true
+            }
+
             // ── Embedded-browser toolbar ─────────────────────────────────
             Rectangle {
                 Layout.fillWidth: true

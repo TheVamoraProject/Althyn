@@ -40,7 +40,8 @@ Item {
             Layout.rightMargin: 28
             text: "Application settings"
             color: appSettingsPage.pageText
-            font { pixelSize: 22; weight: Font.DemiBold }
+            font.pixelSize: 26
+            font.bold: true
         }
 
         Text {

@@ -41,7 +41,14 @@ ApplicationWindow {
     readonly property color txtPrimary:   darkTheme ? "#f4f4f5" : "#18181b"
     readonly property color txtSecondary: darkTheme ? "#a1a1aa" : "#71717a"
     readonly property color txtMuted:     darkTheme ? "#71717a" : "#a1a1aa"
-    readonly property color accentColor:   "#7dd3fc"
+    // Loaded once at startup via `vamorasys settings get appearance.accent_color`.
+    // VamifyPage pushes new values in here (same pattern as appearanceTheme)
+    // after a successful `vamorasys settings set`, so every page that reads
+    // root.accentColor picks up the change immediately.
+    property color accentColor: {
+        var value = SysInfo.getAccentColor()
+        return value.indexOf("error") !== 0 ? value : "#7dd3fc"
+    }
 
     background: Rectangle {
         radius: root.windowIsMaximized ? 0 : 18
@@ -92,11 +99,44 @@ ApplicationWindow {
             color: parent.color
         }
 
+        // Back button — only shown on mobile, only in the detail view, and
+        // only takes the place of the chrome title's usual left margin.
+        Item {
+            id: chromeBackButton
+            visible: root.isMobile && root.mobileDetailOpen
+            anchors { left: parent.left; leftMargin: 8; verticalCenter: parent.verticalCenter }
+            width: visible ? 34 : 0
+            height: 34
+
+            AppIcon { anchors.centerIn: parent; name: "chevron-left"; iconSize: 18 }
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                    if (mobileDetailPane.isNestedPage && mobileDetailPane.loadedItem)
+                        if (mobileDetailPane.loadedItem.goBack !== undefined)
+                            mobileDetailPane.loadedItem.goBack()
+                        else
+                            mobileDetailPane.loadedItem.activeSection = "overview"
+                    else
+                        root.mobileDetailOpen = false
+                }
+            }
+        }
+
         Text {
-            anchors { left: parent.left; leftMargin: 20; verticalCenter: parent.verticalCenter }
-            text: "Settings"
+            anchors {
+                left: chromeBackButton.visible ? chromeBackButton.right : parent.left
+                leftMargin: chromeBackButton.visible ? 4 : 20
+                right: windowControls.left
+                rightMargin: 12
+                verticalCenter: parent.verticalCenter
+            }
+            text: root.chromeTitle
             color: root.txtPrimary
-            font { pixelSize: 13; weight: Font.DemiBold }
+            font.pixelSize: 13 + (1 - root.mobileTitleProgress) * 11
+            font.weight: root.mobileTitleProgress > 0.6 ? Font.DemiBold : Font.Bold
+            elide: Text.ElideRight
         }
 
         Row {
@@ -124,7 +164,12 @@ ApplicationWindow {
         }
 
         MouseArea {
-            anchors { left: parent.left; right: windowControls.left; top: parent.top; bottom: parent.bottom }
+            anchors {
+                left: chromeBackButton.visible ? chromeBackButton.right : parent.left
+                right: windowControls.left
+                top: parent.top
+                bottom: parent.bottom
+            }
             cursorShape: Qt.SizeAllCursor
             onPressed: root.startSystemMove()
             onDoubleClicked: {
@@ -212,6 +257,24 @@ ApplicationWindow {
     property bool mobileDetailOpen: false
     property string search: ""
 
+    // 0 = fully expanded ("big") title, 1 = fully collapsed (matches the
+    // permanent small chrome-bar title used everywhere else). Only mobile's
+    // list view collapses on scroll; desktop and the mobile detail view
+    // just stay at 1 (the title they've always shown).
+    readonly property real mobileTitleProgress: (root.isMobile && !root.mobileDetailOpen)
+        ? Math.max(0, Math.min(1, mobileListFlick.contentY / 36))
+        : 1
+
+    // What the chrome-bar title shows: "Settings" everywhere except the
+    // mobile detail view, where it becomes the current page/section title
+    // (with a back button, added in the chrome bar itself below).
+    readonly property string chromeTitle: (root.isMobile && root.mobileDetailOpen)
+        ? (mobileDetailPane.isNestedPage
+           ? ((mobileDetailPane.loadedItem && mobileDetailPane.loadedItem.activeSectionTitle !== undefined)
+              ? mobileDetailPane.loadedItem.activeSectionTitle : "")
+           : root.categoryTitleFor(root.selected))
+        : "Settings"
+
     function refreshAppearanceTheme() {
         var value = SysInfo.getAppearanceTheme()
         if (value === "dark" || value === "light")
@@ -243,8 +306,11 @@ ApplicationWindow {
         ListElement { settingId: "about-device";   title: "About Device";       subtitle: "System info, kernel, build";        icon: "info";         page: "pages/AboutPage.qml" }
         ListElement { settingId: "network";        title: "Network & Connections"; subtitle: "Wi-Fi, Bluetooth, VPN";         icon: "wifi";         page: "pages/ConnectionsPage.qml" }
         ListElement { settingId: "devices";        title: "Connected Devices";  subtitle: "Peripherals & Althyn Share";        icon: "usb";          page: "pages/ConnectedDevicesPage.qml" }
+        ListElement { settingId: "sound";        title: "Sound and vibration";  subtitle: "Sound mode & Volume";        icon: "volume/high";          page: "pages/SoundPage.qml" }
+        ListElement { settingId: "display";        title: "Display";  subtitle: "Brightness & Eye comfort";        icon: "settings";          page: "pages/DisplayPage.qml" }
         ListElement { settingId: "personalization"; title: "Vamify";   subtitle: "Theme, accent, wallpaper";          icon: "palette";      page: "pages/VamifyPage.qml" }
         ListElement { settingId: "security";       title: "Security & Privacy"; subtitle: "Lock screen, permissions, firewall"; icon: "shield-check"; page: "pages/SecurityPage.qml" }
+        ListElement { settingId: "advanced";        title: "Advanced Features";  subtitle: "advanced";        icon: "settings";          page: "pages/AdvancedPage.qml" }
         ListElement { settingId: "apps";           title: "Apps";               subtitle: "Installed apps & permissions";      icon: "apps";         page: "pages/AppsPage.qml" }
         ListElement { settingId: "accessibility";  title: "Accessibility";      subtitle: "Vision, hearing, dexterity";        icon: "accessibility"; page: "pages/AccessibilityPage.qml" }
         ListElement { settingId: "support";        title: "Help & Support";     subtitle: "Docs, diagnostics, updates";        icon: "help-circle";  page: "pages/HelpPage.qml" }
@@ -414,79 +480,9 @@ ApplicationWindow {
         anchors { fill: parent; topMargin: root.chromeHeight }
         spacing: 0
 
-        // Single unified header: "‹  Settings › Category › Subpage" — one
-        // row, one back step at a time, breadcrumb crumbs jump straight to
-        // that level. Replaces the old two-stacked-titles look (this outer
-        // bar plus each page's own internal toolbar/title).
-        Rectangle {
-            visible: root.mobileDetailOpen
-            Layout.fillWidth: true
-            height: 44
-            color: "transparent"
-
-            readonly property bool nested: mobileDetailPane.isNestedPage
-            readonly property var loadedItem: mobileDetailPane.loadedItem
-
-            RowLayout {
-                anchors { fill: parent; leftMargin: 12; rightMargin: 16 }
-                spacing: 2
-
-                // One step back (nested subpage -> category overview,
-                // category -> settings list).
-                Item {
-                    Layout.preferredWidth: 26
-                    Layout.fillHeight: true
-                    AppIcon { anchors.centerIn: parent; name: "chevron-left"; iconSize: 16 }
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            if (mobileDetailPane.isNestedPage && mobileDetailPane.loadedItem)
-                                mobileDetailPane.loadedItem.activeSection = "overview"
-                            else
-                                root.mobileDetailOpen = false
-                        }
-                    }
-                }
-
-                Text {
-                    text: "Settings"
-                    color: root.txtSecondary
-                    font { pixelSize: 13; weight: Font.Medium }
-                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.mobileDetailOpen = false }
-                }
-
-                AppIcon { name: "chevron-right"; iconSize: 10 }
-
-                Text {
-                    text: root.categoryTitleFor(root.selected)
-                    color: mobileDetailPane.isNestedPage ? root.txtSecondary : root.txtPrimary
-                    font { pixelSize: 13; weight: mobileDetailPane.isNestedPage ? Font.Medium : Font.DemiBold }
-                    elide: Text.ElideRight
-                    MouseArea {
-                        anchors.fill: parent
-                        enabled: mobileDetailPane.isNestedPage
-                        cursorShape: mobileDetailPane.isNestedPage ? Qt.PointingHandCursor : Qt.ArrowCursor
-                        onClicked: if (mobileDetailPane.loadedItem) mobileDetailPane.loadedItem.activeSection = "overview"
-                    }
-                }
-
-                AppIcon { name: "chevron-right"; iconSize: 10; visible: mobileDetailPane.isNestedPage }
-
-                Text {
-                    visible: mobileDetailPane.isNestedPage
-                    text: (mobileDetailPane.loadedItem && mobileDetailPane.loadedItem.activeSectionTitle !== undefined)
-                          ? mobileDetailPane.loadedItem.activeSectionTitle : ""
-                    color: root.txtPrimary
-                    font { pixelSize: 13; weight: Font.DemiBold }
-                    elide: Text.ElideRight
-                    Layout.fillWidth: true
-                }
-            }
-        }
-
         // List view: scrolls its own content.
         Flickable {
+            id: mobileListFlick
             visible: !root.mobileDetailOpen
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -552,7 +548,7 @@ ApplicationWindow {
     Item {
         id: desktopRoot
         visible: !root.isMobile
-        anchors { fill: parent; topMargin: root.chromeHeight + 24; leftMargin: 24; rightMargin: 24; bottomMargin: 24 }
+        anchors { fill: parent; topMargin: root.chromeHeight + 12; leftMargin: 24; rightMargin: 24; bottomMargin: 1 }
 
         readonly property real sidebarWidth: 320
         readonly property real gap: 24

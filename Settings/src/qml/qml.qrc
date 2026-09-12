@@ -4,6 +4,7 @@
         <file>main.qml</file>
         <file>components/NavItem.qml</file>
         <file>components/ToggleRow.qml</file>
+        <file>components/StyledSlider.qml</file>
         <file>components/SettingsRow.qml</file>
         <file>components/SectionHeader.qml</file>
         <file>components/WifiBar.qml</file>

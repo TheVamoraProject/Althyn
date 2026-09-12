@@ -40,6 +40,18 @@ Item {
             width: parent.width; spacing: 0
             Item { height: 28 }
 
+            Text {
+                Layout.fillWidth: true
+                Layout.leftMargin: 28
+                Layout.rightMargin: 28
+                text: "Accessibility"
+                color: "#f0f0f0"
+                font.pixelSize: 26
+                font.bold: true
+            }
+
+            Item { height: 14 }
+
             ColumnLayout {
                 Layout.fillWidth: true; Layout.leftMargin: 28; Layout.rightMargin: 28; spacing: 14
 
@@ -62,12 +74,9 @@ Item {
                             ColumnLayout { anchors { fill: parent; leftMargin: 16; rightMargin: 16; topMargin: 10 }; spacing: 6
                                 RowLayout {
                                     Text { text: "Text Scale"; color: "#f0f0f0"; font.pixelSize: 14; Layout.fillWidth: true }
-                                    Text { text: Math.round(textScale*100)+"%"; color: "#3b82f6"; font { pixelSize: 13; weight: Font.Medium } }
+                                    Text { text: Math.round(textScale*100)+"%"; color: ApplicationWindow.window.accentColor; font { pixelSize: 13; weight: Font.Medium } }
                                 }
-                                Slider { Layout.fillWidth: true; from: 0.75; to: 2.0; stepSize: 0.05; value: textScale; onMoved: textScale=value
-                                    background: Rectangle { x: parent.leftPadding; y: parent.topPadding+parent.availableHeight/2-2; width: parent.availableWidth; height: 4; radius: 2; color: "#2c2c2c"; Rectangle { width: parent.parent.visualPosition*parent.width; height: 4; radius: 2; color: "#3b82f6" } }
-                                    handle: Rectangle { x: parent.leftPadding+parent.visualPosition*(parent.availableWidth-18); y: parent.topPadding+parent.availableHeight/2-9; width: 18; height: 18; radius: 9; color: "#fff"; border { color: "#3b82f6"; width: 2 } }
-                                }
+                                StyledSlider { Layout.fillWidth: true; from: 0.75; to: 2.0; stepSize: 0.05; value: textScale; onMoved: textScale=value }
                             }
                         }
 
@@ -103,12 +112,9 @@ Item {
                             ColumnLayout { anchors { fill: parent; leftMargin: 16; rightMargin: 16; topMargin: 10 }; spacing: 6
                                 RowLayout {
                                     Text { text: "Reading Speed"; color: "#f0f0f0"; font.pixelSize: 14; Layout.fillWidth: true }
-                                    Text { text: Math.round(readerSpeed*100)+"%"; color: "#3b82f6"; font { pixelSize: 13; weight: Font.Medium } }
+                                    Text { text: Math.round(readerSpeed*100)+"%"; color: ApplicationWindow.window.accentColor; font { pixelSize: 13; weight: Font.Medium } }
                                 }
-                                Slider { Layout.fillWidth: true; from: 0.5; to: 2.0; stepSize: 0.1; value: readerSpeed; onMoved: readerSpeed=value
-                                    background: Rectangle { x: parent.leftPadding; y: parent.topPadding+parent.availableHeight/2-2; width: parent.availableWidth; height: 4; radius: 2; color: "#2c2c2c"; Rectangle { width: parent.parent.visualPosition*parent.width; height: 4; radius: 2; color: "#3b82f6" } }
-                                    handle: Rectangle { x: parent.leftPadding+parent.visualPosition*(parent.availableWidth-18); y: parent.topPadding+parent.availableHeight/2-9; width: 18; height: 18; radius: 9; color: "#fff"; border { color: "#3b82f6"; width: 2 } }
-                                }
+                                StyledSlider { Layout.fillWidth: true; from: 0.5; to: 2.0; stepSize: 0.1; value: readerSpeed; onMoved: readerSpeed=value }
                             }
                         }
                     }
@@ -144,12 +150,9 @@ Item {
                             ColumnLayout { anchors { fill: parent; leftMargin: 16; rightMargin: 16; topMargin: 10 }; spacing: 6
                                 RowLayout {
                                     Text { text: "Pointer Speed"; color: "#f0f0f0"; font.pixelSize: 14; Layout.fillWidth: true }
-                                    Text { text: Math.round(pointerSpeed*100)+"%"; color: "#3b82f6"; font { pixelSize: 13; weight: Font.Medium } }
+                                    Text { text: Math.round(pointerSpeed*100)+"%"; color: ApplicationWindow.window.accentColor; font { pixelSize: 13; weight: Font.Medium } }
                                 }
-                                Slider { Layout.fillWidth: true; from: 0; to: 1; stepSize: 0.05; value: pointerSpeed; onMoved: pointerSpeed=value
-                                    background: Rectangle { x: parent.leftPadding; y: parent.topPadding+parent.availableHeight/2-2; width: parent.availableWidth; height: 4; radius: 2; color: "#2c2c2c"; Rectangle { width: parent.parent.visualPosition*parent.width; height: 4; radius: 2; color: "#3b82f6" } }
-                                    handle: Rectangle { x: parent.leftPadding+parent.visualPosition*(parent.availableWidth-18); y: parent.topPadding+parent.availableHeight/2-9; width: 18; height: 18; radius: 9; color: "#fff"; border { color: "#3b82f6"; width: 2 } }
-                                }
+                                StyledSlider { Layout.fillWidth: true; from: 0; to: 1; stepSize: 0.05; value: pointerSpeed; onMoved: pointerSpeed=value }
                             }
                         }
                     }
