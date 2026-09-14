@@ -9,7 +9,7 @@ Item {
     property color hoverColor: "#26f4f4f5"
     signal launch(string execStr)
     signal itemChanged(var item)
-    signal appRightClicked(real x, real y, string desktopPath, string appName)
+    signal appRightClicked(real x, real y, var itemData)
     signal bgRightClicked(real x, real y)
     // Fired when an item is dragged to (and held at) the left/right edge
     // of the page, requesting a move to the adjacent page. direction is
@@ -27,6 +27,19 @@ Item {
     // (HyperOS-style cascade) instead of appearing instantly. Set by the
     // window for the initial homescreen load only.
     property bool animateEntrance: false
+    // icons.corner_radius passed down from window.qml (0-32, 32 = circle).
+    property real iconCornerRadiusRaw: 8
+    // Widgets discovered from ~/Desktop/*.widget manifests (see
+    // window.qml/applist.rs), each already resolved to its actual QML
+    // file. A "widget" item in the layout references one by package.
+    property var availableWidgets: []
+    // The item (if any) currently in explicit "Resize" mode (see
+    // window.qml's beginResize/endResize) — forces that item's resize
+    // handle visible even without hover, e.g. for touch.
+    property var resizingItem: null
+    // Fired when a resize drag that was started via the explicit "Resize"
+    // menu action finishes, so window.qml can turn page-swiping back on.
+    signal endResizeItem()
 
     MouseArea {
         anchors.fill: parent
@@ -82,13 +95,43 @@ Item {
             }
 
             Rectangle { anchors.fill: parent; anchors.margins: 4; radius: 14; color: dragArea.containsMouse ? page.hoverColor : "transparent"; visible: itemData.type !== "app" || dragArea.containsMouse }
-            AppTile {
+            Loader {
                 anchors.fill: parent; anchors.margins: Math.max(4, Math.floor(Math.min(cellW,cellH)*0.08))
-                appName: itemData.appName || (itemData.type === "folder" ? (itemData.name || "Folder") : (itemData.type === "widget" ? (itemData.name || "Widget") : ""))
-                iconPath: itemData.iconPath || "../../assets/icons/unknown.svg"
-                textColor: page.textColor; hoverColor: page.hoverColor
-                onClicked: { if (itemData.type === "app") page.launch(itemData.execStr || "") }
-                onRightClicked: function(px,py) { page.appRightClicked(px,py,itemData.desktopPath||"",itemData.appName||itemData.name||"") }
+                sourceComponent: itemData.type === "widget" ? widgetTileComponent : appTileComponent
+            }
+
+            Component {
+                id: appTileComponent
+                AppTile {
+                    appName: itemData.appName || (itemData.type === "folder" ? (itemData.name || "Folder") : "")
+                    iconPath: itemData.iconPath || "../../assets/icons/unknown.svg"
+                    directRound: !!itemData.directRound || !itemData.iconPath
+                    bgColor: itemData.bgColor || ""
+                    iconCornerRadiusRaw: page.iconCornerRadiusRaw
+                    tileSpanW: itemData.width || 1
+                    tileSpanH: itemData.height || 1
+                    textColor: page.textColor; hoverColor: page.hoverColor
+                    onClicked: { if (itemData.type === "app") page.launch(itemData.execStr || "") }
+                    onRightClicked: function(px,py) { page.appRightClicked(px,py,itemData) }
+                }
+            }
+
+            Component {
+                id: widgetTileComponent
+                WidgetTile {
+                    // itemData.package identifies which discovered widget
+                    // this placed instance is — matches Package= from its
+                    // .widget manifest (see applist.rs).
+                    readonly property var widget: page.availableWidgets.find(function(w) { return w.package === itemData.package })
+                    widgetName: itemData.name || (widget ? widget.name : "Widget")
+                    widgetSource: widget ? widget.source : ""
+                    vamifyEnabled: widget ? widget.vamify : true
+                    iconCornerRadiusRaw: page.iconCornerRadiusRaw
+                    tileSpanW: itemData.width || 1
+                    tileSpanH: itemData.height || 1
+                    textColor: page.textColor
+                    onRightClicked: function(px,py) { page.appRightClicked(px,py,itemData) }
+                }
             }
             MouseArea {
                 id: dragArea; anchors.fill: parent; acceptedButtons: Qt.LeftButton; hoverEnabled: true; propagateComposedEvents: true
@@ -112,10 +155,24 @@ Item {
                     itemData.x=nx; itemData.y=ny; cell.x=16+nx*cellW; cell.y=16+ny*cellH; page.itemChanged(itemData)
                 }
             }
-            Rectangle { width: 14; height: 14; radius: 4; color: page.textColor; opacity: dragArea.containsMouse ? .8 : 0; anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: 3
+            Rectangle { width: 14; height: 14; radius: 4; color: page.textColor; visible: page.resizingItem === itemData; anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: 3
                 MouseArea { anchors.fill: parent; cursorShape: Qt.SizeFDiagCursor; onPressed: { mouse.accepted=true }
-                    onPositionChanged: { if (pressed) { var nw=Math.max(1,Math.min(page.cols-itemData.x,Math.round((mouse.x+cell.width)/cellW))); var nh=Math.max(1,Math.min(page.rows-itemData.y,Math.round((mouse.y+cell.height)/cellH))); itemData.width=nw; itemData.height=nh; cell.width=nw*cellW; cell.height=nh*cellH } }
-                    onReleased: page.itemChanged(itemData)
+                    onPositionChanged: {
+                        if (pressed) {
+                            var minW=1, minH=1, maxW=page.cols, maxH=page.rows
+                            if (itemData.type === "widget") {
+                                var w = page.availableWidgets.find(function(x) { return x.package === itemData.package })
+                                if (w) { minW=w.minWidth; minH=w.minHeight; maxW=Math.min(w.maxWidth, page.cols); maxH=Math.min(w.maxHeight, page.rows) }
+                            }
+                            var nw=Math.max(minW,Math.min(Math.min(maxW,page.cols-itemData.x),Math.round((mouse.x+cell.width)/cellW)))
+                            var nh=Math.max(minH,Math.min(Math.min(maxH,page.rows-itemData.y),Math.round((mouse.y+cell.height)/cellH)))
+                            itemData.width=nw; itemData.height=nh; cell.width=nw*cellW; cell.height=nh*cellH
+                        }
+                    }
+                    onReleased: {
+                        page.itemChanged(itemData)
+                        if (page.resizingItem === itemData) page.endResizeItem()
+                    }
                 }
             }
         }

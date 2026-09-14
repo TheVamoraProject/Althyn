@@ -123,6 +123,11 @@ Item {
     // icons.*
     property string iconsBgColor: "#2563eb"
     property real iconsCornerRadius: 8
+    // VamoraSys caps this at 32px - going higher fails and the setting
+    // silently reverts to default, so this is the single source of
+    // truth for both the slider's max and the preview's "full circle"
+    // point below.
+    readonly property real iconsCornerRadiusMax: 32
     property bool iconsStroke: false
     property string iconsStrokeColor: "#0f172a"
     property string iconsStyle: "normal"
@@ -704,6 +709,10 @@ Item {
         property real toVal: 1
         property real stepVal: 0.01
         signal moved(real v)
+        // Fires once when the user lets go of the handle - lets a caller
+        // apply/commit a value only after dragging ends, instead of on
+        // every tick of "moved".
+        signal released()
 
         Layout.fillWidth: true
         spacing: 6
@@ -717,6 +726,7 @@ Item {
             from: ls.fromVal; to: ls.toVal; stepSize: ls.stepVal
             value: ls.value
             onMoved: ls.moved(value)
+            onPressedChanged: if (!pressed) ls.released()
         }
     }
 
@@ -1806,7 +1816,12 @@ Item {
                                                 Rectangle {
                                                     id: previewIconMask
                                                     anchors.fill: parent
-                                                    radius: Math.min(vamifyPage.iconsCornerRadius, width / 2)
+                                                    // Scaled as a fraction of this icon's own half-width
+                                                    // (not a raw px value) so iconsCornerRadiusMax always
+                                                    // renders as a full circle, however big or small the
+                                                    // preview icon is - matching how it looks at the
+                                                    // real, fixed size on the actual homescreen.
+                                                    radius: (vamifyPage.iconsCornerRadius / vamifyPage.iconsCornerRadiusMax) * (width / 2)
                                                     visible: false
                                                 }
                                                 OpacityMask {
@@ -1894,14 +1909,19 @@ Item {
                         valueText: Math.round(vamifyPage.iconsCornerRadius) + "px"
                         value: vamifyPage.iconsCornerRadius
                         fromVal: 0
-                        toVal: 36
+                        toVal: vamifyPage.iconsCornerRadiusMax
                         stepVal: 1
+                        // Live while dragging: just updates the local value,
+                        // which the preview above is bound to - cheap, no
+                        // system call, so it can't lag no matter how fast
+                        // you drag.
                         onMoved: function(v) {
-                            vamifyPage.setNumberSetting(
-                                "icons.corner_radius",
-                                "iconsCornerRadius",
-                                v
-                            )
+                            vamifyPage.iconsCornerRadius = v
+                        }
+                        // Only commit to the actual system setting once
+                        // you let go of the handle.
+                        onReleased: {
+                            vamifyPage.writeSetting("icons.corner_radius", vamifyPage.iconsCornerRadius.toString())
                         }
                     }
 

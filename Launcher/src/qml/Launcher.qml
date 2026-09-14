@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Window
+import Qt5Compat.GraphicalEffects
 import com.vamora
 
 Window {
@@ -18,6 +19,15 @@ Window {
     property int selectedIndex: -1
     property bool errorVisible: false
     property string failedCommand: ""
+
+    // icons.corner_radius from VamoraSys: 0-32, where 32 means "make it a
+    // full circle" regardless of the icon's actual pixel size. Divide by
+    // 32 for a 0-1 fraction, then scale that fraction against half of
+    // whatever size is actually being drawn.
+    property real iconCornerRadiusRaw: 8
+    function iconRadius(size) {
+        return Math.min(iconCornerRadiusRaw, 32) / 32 * (size / 2)
+    }
 
     readonly property color panelColor: darkTheme ? "#18181b" : "#fafafa"
     readonly property color surfaceColor: darkTheme ? "#27272a" : "#ffffff"
@@ -84,6 +94,7 @@ Window {
     Component.onCompleted: {
         // Theme detection is intentionally a single startup read.
         darkTheme = appList.getTheme() !== "light"
+        iconCornerRadiusRaw = parseFloat(appList.getIconCornerRadius()) || iconCornerRadiusRaw
         allApps = JSON.parse(appList.getAppsJson())
         updateResults()
         searchField.forceActiveFocus()
@@ -202,19 +213,64 @@ Window {
                     Behavior on color { ColorAnimation { duration: 100 } }
                     Behavior on border.color { ColorAnimation { duration: 100 } }
 
-                    Image {
-                        id: resultIcon
+                    Item {
+                        id: resultIconSlot
                         anchors.top: parent.top
                         anchors.topMargin: 14
                         anchors.horizontalCenter: parent.horizontalCenter
                         width: 58
                         height: 58
-                        source: modelData.isCommand
-                                ? "qrc:/assets/terminal.png"
-                                : (modelData.iconPath !== "" ? modelData.iconPath : "qrc:/assets/unknown.png")
-                        fillMode: Image.PreserveAspectFit
-                        asynchronous: true
-                        cache: true
+
+                        // terminal.png / unknown.png are our own Vamora
+                        // icons, and anything whose .desktop file declares
+                        // VamoraPackage=<anything> is a known-good, full-
+                        // bleed square icon — all of those can be rounded
+                        // directly. Everything else might not be square,
+                        // so it gets an adaptive-icon-style backplate
+                        // instead of being rounded (and possibly clipped)
+                        // directly.
+                        readonly property bool directRound: modelData.isCommand
+                                || modelData.iconPath === ""
+                                || !!modelData.directRound
+
+                        Rectangle {
+                            id: adaptiveBg
+                            anchors.fill: parent
+                            radius: launcher.iconRadius(width)
+                            color: "#ffffff"
+                            visible: !resultIconSlot.directRound
+                        }
+
+                        Image {
+                            id: resultIcon
+                            anchors.centerIn: parent
+                            width: resultIconSlot.directRound ? parent.width : parent.width * 0.66
+                            height: resultIconSlot.directRound ? parent.height : parent.height * 0.66
+                            source: modelData.isCommand
+                                    ? "qrc:/assets/terminal.png"
+                                    : (modelData.iconPath !== "" ? modelData.iconPath : "qrc:/assets/unknown.png")
+                            fillMode: Image.PreserveAspectFit
+                            asynchronous: true
+                            cache: true
+                            // Direct-round icons are drawn through the
+                            // OpacityMask below instead; non-direct-round
+                            // ones just sit inset on the backplate as-is.
+                            visible: !resultIconSlot.directRound
+                        }
+
+                        Rectangle {
+                            id: resultIconMask
+                            anchors.fill: parent
+                            radius: launcher.iconRadius(width)
+                            visible: false
+                        }
+
+                        OpacityMask {
+                            anchors.fill: parent
+                            source: resultIcon
+                            maskSource: resultIconMask
+                            visible: resultIconSlot.directRound
+                        }
                     }
 
                     Text {

@@ -4,6 +4,7 @@
         <file>layouts/homescreen/window.qml</file>
         <file>layouts/homescreen/HomePage.qml</file>
         <file>layouts/homescreen/AppTile.qml</file>
-        <file>layouts/homescreen/ContextMenu.qml</file>
+        <file>layouts/homescreen/WidgetTile.qml</file>
+        <file>layouts/homescreen/VamoraContextMenu.qml</file>
     </qresource>
 </RCC>

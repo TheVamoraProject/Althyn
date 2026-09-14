@@ -107,6 +107,9 @@ Window {
     property var filteredApps: []
     property int cols: isMaximized ? 8 : 5
     property real cellSize: (startmenu.width - 24) / cols
+    // icons.corner_radius from VamoraSys (0-32, 32 = full circle), read
+    // once at startup — same convention as the launcher and homescreen.
+    property real iconCornerRadiusRaw: 8
 
     function applyFilter(text) {
         var q = text.toLowerCase().trim()
@@ -120,6 +123,7 @@ Window {
     Component.onCompleted: {
         allApps = JSON.parse(appList.getAppsJson())
         filteredApps = allApps.slice()
+        iconCornerRadiusRaw = parseFloat(appList.getIconCornerRadius()) || iconCornerRadiusRaw
     }
 
     Rectangle {
@@ -403,6 +407,8 @@ Window {
                         appName: modelData.appName
                         iconPath: modelData.iconPath
                         execStr: modelData.execStr
+                        directRound: !!modelData.directRound || modelData.iconPath === ""
+                        iconCornerRadiusRaw: window.iconCornerRadiusRaw
                         textColor: cText
                         hoverColor: cSurfaceHover
                     }
