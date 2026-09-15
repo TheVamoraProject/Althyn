@@ -205,6 +205,14 @@ Window {
         var before=JSON.stringify(pagesModel);
         var beforeModel=pagesModel;
         apps=freshApps;
+        // icons.corner_radius can change while the homescreen is running
+        // (it never closes) — pick up a live change the same way apps
+        // themselves get picked up, rather than only reading it once at
+        // startup.
+        var freshRadius=parseFloat(appList.getIconCornerRadius());
+        if (!isNaN(freshRadius) && freshRadius!==iconCornerRadiusRaw) {
+            iconCornerRadiusRaw=freshRadius;
+        }
         buildPages();
         if(JSON.stringify(pagesModel)!==before) {
             persist();

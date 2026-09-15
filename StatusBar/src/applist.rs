@@ -44,11 +44,19 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "saveQuickSettingsLayout"]
         fn save_quick_settings_layout(self: &AppList, layout: &QString);
+
+        /// Reads `icons.corner_radius` (0-32, 32 = full circle) from
+        /// VamoraSys once at startup, same as the launcher and
+        /// homescreen.
+        #[qinvokable]
+        #[cxx_name = "getIconCornerRadius"]
+        fn get_icon_corner_radius(self: &AppList) -> QString;
     }
 }
 
 use cxx_qt_lib::QString;
 use std::path::PathBuf;
+use std::process::Command;
 
 #[derive(Default)]
 pub struct AppListRust;
@@ -132,6 +140,19 @@ impl qobject::AppList {
         let _ = std::fs::write(path, format!("{}", layout));
     }
 
+    pub fn get_icon_corner_radius(&self) -> QString {
+        let radius = Command::new("vamorasys")
+            .args(["settings", "get", "icons.corner_radius"])
+            .output()
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .map(|v| v.trim().to_string())
+            .and_then(|v| v.parse::<f64>().ok())
+            .filter(|v| v.is_finite() && *v >= 0.0)
+            .unwrap_or(8.0);
+        QString::from(radius.to_string().as_str())
+    }
+
     pub fn copy_to_favorites(&self, desktop_file_path: &QString) {
         let src = format!("{}", desktop_file_path);
         if src.is_empty() {
@@ -163,6 +184,13 @@ struct App {
     icon_path: String,
     exec: String,
     desktop_path: String,
+    // True for Vamora's own icons and for apps whose .desktop file
+    // declares VamoraPackage=<anything> — a known-good, full-bleed
+    // square icon that's safe to round directly. Same convention as
+    // the homescreen and launcher.
+    direct_round: bool,
+    // BGColor=#RRGGBB from the .desktop file, if any.
+    bg_color: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -207,6 +235,8 @@ fn parse_desktop_file(path: &PathBuf) -> Option<App> {
     let mut exec = String::new();
     let mut app_type = String::new();
     let mut no_display = false;
+    let mut direct_round = false;
+    let mut bg_color = String::new();
 
     for line in content.lines() {
         let line = line.trim();
@@ -236,6 +266,14 @@ fn parse_desktop_file(path: &PathBuf) -> Option<App> {
             app_type = v.to_string();
         } else if line == "NoDisplay=true" || line == "Hidden=true" {
             no_display = true;
+        } else if let Some(v) = line.strip_prefix("VamoraPackage=") {
+            if !v.trim().is_empty() {
+                direct_round = true;
+            }
+        } else if let Some(v) = line.strip_prefix("BGColor=") {
+            if v.trim().starts_with('#') {
+                bg_color = v.trim().to_string();
+            }
         }
     }
 
@@ -248,6 +286,8 @@ fn parse_desktop_file(path: &PathBuf) -> Option<App> {
         icon_path: resolve_icon(&icon),
         exec: clean_exec(&exec),
         desktop_path: path.to_string_lossy().to_string(),
+        direct_round,
+        bg_color,
     })
 }
 
@@ -335,11 +375,13 @@ fn apps_to_json(apps: &[App]) -> String {
             out.push(',');
         }
         out.push_str(&format!(
-            r#"{{"appName":"{}","iconPath":"{}","execStr":"{}","desktopPath":"{}"}}"#,
+            r#"{{"appName":"{}","iconPath":"{}","execStr":"{}","desktopPath":"{}","directRound":{},"bgColor":"{}"}}"#,
             json_escape(&app.name),
             json_escape(&app.icon_path),
             json_escape(&app.exec),
             json_escape(&app.desktop_path),
+            app.direct_round,
+            json_escape(&app.bg_color),
         ));
     }
     out.push(']');

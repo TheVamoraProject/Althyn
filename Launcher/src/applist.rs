@@ -36,6 +36,13 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "getTheme"]
         fn get_theme(self: &AppList) -> QString;
+
+        /// Reads `icons.corner_radius` (0-32, 32 = full circle) from
+        /// VamoraSys once at startup, same as the homescreen and start
+        /// menu.
+        #[qinvokable]
+        #[cxx_name = "getIconCornerRadius"]
+        fn get_icon_corner_radius(self: &AppList) -> QString;
     }
 }
 
@@ -55,6 +62,13 @@ struct App {
     icon_path: String,
     exec: String,
     terminal: bool,
+    // True for Vamora's own icons and for apps whose .desktop file
+    // declares VamoraPackage=<anything> — a known-good, full-bleed
+    // square icon that's safe to round directly. Same convention as
+    // the homescreen and start menu.
+    direct_round: bool,
+    // BGColor=#RRGGBB from the .desktop file, if any.
+    bg_color: String,
 }
 
 #[derive(Clone)]
@@ -118,6 +132,19 @@ impl qobject::AppList {
 
         QString::from(theme.as_str())
     }
+
+    pub fn get_icon_corner_radius(&self) -> QString {
+        let radius = Command::new("vamorasys")
+            .args(["settings", "get", "icons.corner_radius"])
+            .output()
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .map(|v| v.trim().to_string())
+            .and_then(|v| v.parse::<f64>().ok())
+            .filter(|v| v.is_finite() && *v >= 0.0)
+            .unwrap_or(8.0);
+        QString::from(radius.to_string().as_str())
+    }
 }
 
 fn scan_desktop_files() -> Vec<App> {
@@ -176,6 +203,8 @@ fn parse_desktop_file(path: &Path) -> Option<App> {
     let mut app_type = String::new();
     let mut hidden = false;
     let mut terminal = false;
+    let mut direct_round = false;
+    let mut bg_color = String::new();
 
     for line in content.lines() {
         let line = line.trim();
@@ -200,6 +229,8 @@ fn parse_desktop_file(path: &Path) -> Option<App> {
             "Type" => app_type = value.to_string(),
             "NoDisplay" | "Hidden" if value.eq_ignore_ascii_case("true") => hidden = true,
             "Terminal" => terminal = value.eq_ignore_ascii_case("true"),
+            "VamoraPackage" if !value.trim().is_empty() => direct_round = true,
+            "BGColor" if value.trim().starts_with('#') => bg_color = value.trim().to_string(),
             _ => {}
         }
     }
@@ -213,6 +244,8 @@ fn parse_desktop_file(path: &Path) -> Option<App> {
         icon_path: resolve_icon(&icon),
         exec: remove_field_codes(&exec),
         terminal,
+        direct_round,
+        bg_color,
     })
 }
 
@@ -490,11 +523,13 @@ fn apps_to_json(apps: &[App]) -> String {
             output.push(',');
         }
         output.push_str(&format!(
-            r#"{{"appName":"{}","iconPath":"{}","execStr":"{}","isCommand":false,"terminal":{}}}"#,
+            r#"{{"appName":"{}","iconPath":"{}","execStr":"{}","isCommand":false,"terminal":{},"directRound":{},"bgColor":"{}"}}"#,
             json_escape(&app.name),
             json_escape(&app.icon_path),
             json_escape(&app.exec),
-            app.terminal
+            app.terminal,
+            app.direct_round,
+            json_escape(&app.bg_color)
         ));
     }
     output.push(']');

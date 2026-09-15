@@ -40,6 +40,10 @@ Window {
         triggeredOnStart: true
         onTriggered: {
             isDark = themeManager.refresh()
+            var freshRadius = parseFloat(appList.getIconCornerRadius())
+            if (!isNaN(freshRadius) && freshRadius !== window.iconCornerRadiusRaw) {
+                window.iconCornerRadiusRaw = freshRadius
+            }
         }
     }
 
@@ -408,6 +412,7 @@ Window {
                         iconPath: modelData.iconPath
                         execStr: modelData.execStr
                         directRound: !!modelData.directRound || modelData.iconPath === ""
+                        bgColor: modelData.bgColor || ""
                         iconCornerRadiusRaw: window.iconCornerRadiusRaw
                         textColor: cText
                         hoverColor: cSurfaceHover

@@ -6,5 +6,6 @@
         <file>assets/icons/dock/camera.png</file>
         <file>assets/icons/dock/clock.png</file>
         <file>assets/icons/dock/compass.png</file>
+        <file>assets/icons/unknown.svg</file>
     </qresource>
 </RCC>

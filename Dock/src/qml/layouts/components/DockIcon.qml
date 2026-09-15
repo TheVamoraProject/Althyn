@@ -1,4 +1,5 @@
 import QtQuick
+import Qt5Compat.GraphicalEffects
 
 Item {
     id: dockIcon
@@ -7,6 +8,25 @@ Item {
     property string appName: ""
     property int baseSize: 52
     readonly property bool magnified: mouseArea.containsMouse
+
+    // True for Vamora's own icons (no iconPath resolved) and for apps
+    // whose .desktop file declares VamoraPackage=<anything> — a known-
+    // good, full-bleed square icon that's safe to round directly.
+    // Everything else gets an adaptive-icon-style backplate instead,
+    // since rounding an arbitrary, possibly non-square icon directly
+    // can clip it. Same convention as the homescreen, start menu and
+    // launcher.
+    property bool directRound: true
+    // BGColor=#RRGGBB from the .desktop file, if any. Empty falls back
+    // to white, same as the homescreen.
+    property string bgColor: ""
+    readonly property string effectiveBgColor: bgColor !== "" ? bgColor : "#ffffff"
+    // icons.corner_radius from VamoraSys (0-32, 32 = full circle at any
+    // pixel size, since the fraction below is always relative to 32).
+    property real iconCornerRadiusRaw: 8
+    function radiusFor(size) {
+        return Math.min(dockIcon.iconCornerRadiusRaw, 32) / 32 * (size / 2)
+    }
 
     signal clicked()
 
@@ -50,15 +70,62 @@ Item {
         }
     }
 
-    Image {
-        id: iconImage
+    Item {
+        id: iconSlot
         anchors.bottom: parent.bottom
         anchors.horizontalCenter: parent.horizontalCenter
         width: dockIcon.baseSize
         height: dockIcon.baseSize
-        source: dockIcon.iconSource
-        smooth: true
-        mipmap: true
+
+        Rectangle {
+            id: adaptiveBg
+            anchors.fill: parent
+            radius: dockIcon.radiusFor(width)
+            color: dockIcon.effectiveBgColor
+            visible: !dockIcon.directRound
+        }
+
+        // Same backdrop behind a direct-round icon too — a verified
+        // square icon can still have transparent padding/corners, so
+        // this keeps it from showing whatever's behind the dock
+        // through instead of a solid tile. Same convention as the
+        // homescreen's AppTile.
+        Rectangle {
+            id: directRoundBg
+            anchors.fill: parent
+            radius: dockIcon.radiusFor(width)
+            color: dockIcon.effectiveBgColor
+            visible: dockIcon.directRound
+        }
+
+        Image {
+            id: iconImage
+            anchors.centerIn: parent
+            width: dockIcon.directRound ? parent.width : parent.width * 0.66
+            height: dockIcon.directRound ? parent.height : parent.height * 0.66
+            source: dockIcon.iconSource !== "" ? dockIcon.iconSource : "qrc:/assets/icons/unknown.svg"
+            fillMode: Image.PreserveAspectFit
+            smooth: true
+            mipmap: true
+            // Direct-round icons are drawn through the OpacityMask
+            // below instead; non-direct-round ones sit inset on the
+            // backplate as-is.
+            visible: !dockIcon.directRound
+        }
+
+        Rectangle {
+            id: iconMask
+            anchors.fill: parent
+            radius: dockIcon.radiusFor(width)
+            visible: false
+        }
+
+        OpacityMask {
+            anchors.fill: parent
+            source: iconImage
+            maskSource: iconMask
+            visible: dockIcon.directRound
+        }
     }
 
     MouseArea {

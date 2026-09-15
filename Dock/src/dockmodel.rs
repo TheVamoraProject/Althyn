@@ -1,6 +1,7 @@
-//! Dummy dock entries for early UI/UX work. Once VamoraSys app discovery
-//! lands here (mirroring AppList in vamora-statusbar), get_dummy_apps_json
-//! will be swapped for a real .desktop scan.
+//! Dock entries: `.desktop` files dropped into
+//! ~/.VamoraSys/althyn/dock/contents/. If that directory has nothing
+//! (or doesn't exist yet), the dock falls back to a single Settings
+//! entry so it's never empty.
 
 #[cxx_qt::bridge]
 pub mod qobject {
@@ -14,58 +15,178 @@ pub mod qobject {
         #[qml_element]
         type DockModel = super::DockModelRust;
 
-        /// Returns a JSON array of {appName, iconPath} dummy entries.
+        /// Returns a JSON array of {appName, iconPath, execStr,
+        /// directRound, bgColor} entries scanned from
+        /// ~/.VamoraSys/althyn/dock/contents/*.desktop, falling back to
+        /// a single Settings entry if there's nothing there.
         #[qinvokable]
-        #[cxx_name = "getDummyAppsJson"]
-        fn get_dummy_apps_json(self: &DockModel) -> QString;
+        #[cxx_name = "getAppsJson"]
+        fn get_apps_json(self: &DockModel) -> QString;
 
-        /// Stub launcher — dummy entries have nothing real to run yet.
+        /// Launches a dock entry's Exec string.
         #[qinvokable]
         #[cxx_name = "launchApp"]
-        fn launch_app(self: &DockModel, app_name: &QString);
+        fn launch_app(self: &DockModel, exec: &QString);
+
+        /// Reads `icons.corner_radius` (0-32, 32 = full circle) from
+        /// VamoraSys once at startup, same as the launcher, homescreen
+        /// and start menu.
+        #[qinvokable]
+        #[cxx_name = "getIconCornerRadius"]
+        fn get_icon_corner_radius(self: &DockModel) -> QString;
     }
 }
 
 use cxx_qt_lib::QString;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 #[derive(Default)]
 pub struct DockModelRust;
 
-struct DummyApp {
-    name: &'static str,
-    icon: &'static str,
+struct App {
+    name: String,
+    icon_path: String,
+    exec: String,
+    direct_round: bool,
+    bg_color: String,
 }
 
-const DUMMY_APPS: &[DummyApp] = &[
-    DummyApp { name: "Calculator", icon: "qrc:/assets/icons/dock/calculator.png" },
-    DummyApp { name: "Calendar", icon: "qrc:/assets/icons/dock/calendar.png" },
-    DummyApp { name: "Camera", icon: "qrc:/assets/icons/dock/camera.png" },
-    DummyApp { name: "Clock", icon: "qrc:/assets/icons/dock/clock.png" },
-    DummyApp { name: "Compass", icon: "qrc:/assets/icons/dock/compass.png" },
-];
-
 impl qobject::DockModel {
-    pub fn get_dummy_apps_json(&self) -> QString {
-        let mut out = String::from("[");
-        for (i, app) in DUMMY_APPS.iter().enumerate() {
-            if i > 0 {
-                out.push(',');
-            }
-            out.push_str(&format!(
-                r#"{{"appName":"{}","iconPath":"{}"}}"#,
-                json_escape(app.name),
-                json_escape(app.icon),
-            ));
+    pub fn get_apps_json(&self) -> QString {
+        let mut apps = scan_dock_contents();
+        if apps.is_empty() {
+            apps.push(fallback_settings_app());
         }
-        out.push(']');
-        QString::from(out.as_str())
+        QString::from(apps_to_json(&apps).as_str())
     }
 
-    pub fn launch_app(&self, app_name: &QString) {
-        println!("vamora-dock: launch requested for dummy app '{app_name}' (no-op)");
+    pub fn launch_app(&self, exec: &QString) {
+        let cleaned = clean_exec(&format!("{}", exec));
+        let mut parts = cleaned.split_whitespace();
+        if let Some(bin) = parts.next() {
+            let _ = Command::new(bin).args(parts).spawn();
+        }
     }
+
+    pub fn get_icon_corner_radius(&self) -> QString {
+        let radius = Command::new("vamorasys")
+            .args(["settings", "get", "icons.corner_radius"])
+            .output()
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .map(|v| v.trim().to_string())
+            .and_then(|v| v.parse::<f64>().ok())
+            .filter(|v| v.is_finite() && *v >= 0.0)
+            .unwrap_or(8.0);
+        QString::from(radius.to_string().as_str())
+    }
+}
+
+fn dock_contents_dir() -> Option<PathBuf> {
+    std::env::var("HOME")
+        .ok()
+        .map(|h| PathBuf::from(h).join(".VamoraSys/althyn/dock/contents"))
+}
+
+fn scan_dock_contents() -> Vec<App> {
+    let Some(dir) = dock_contents_dir() else { return vec![] };
+    let Ok(entries) = std::fs::read_dir(&dir) else { return vec![] };
+    let mut apps = vec![];
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|x| x.to_str()) == Some("desktop") {
+            if let Some(app) = parse_desktop_file(&path) {
+                apps.push(app);
+            }
+        }
+    }
+    apps.sort_by_key(|a| a.name.to_lowercase());
+    apps
+}
+
+fn parse_desktop_file(path: &Path) -> Option<App> {
+    let content = std::fs::read_to_string(path).ok()?;
+    let mut active = false;
+    let mut name = String::new();
+    let mut icon = String::new();
+    let mut exec = String::new();
+    let mut typ = String::new();
+    let mut hidden = false;
+    let mut direct_round = false;
+    let mut bg_color = String::new();
+    for line in content.lines().map(str::trim) {
+        if line == "[Desktop Entry]" { active = true; continue }
+        if line.starts_with('[') && active { break }
+        if !active { continue }
+        if let Some(v) = line.strip_prefix("Name=") { if name.is_empty() { name = v.into() } }
+        else if let Some(v) = line.strip_prefix("Icon=") { if icon.is_empty() { icon = v.into() } }
+        else if let Some(v) = line.strip_prefix("Exec=") { if exec.is_empty() { exec = v.into() } }
+        else if let Some(v) = line.strip_prefix("Type=") { typ = v.into() }
+        else if line == "NoDisplay=true" || line == "Hidden=true" { hidden = true }
+        else if let Some(v) = line.strip_prefix("VamoraPackage=") { if !v.trim().is_empty() { direct_round = true } }
+        else if let Some(v) = line.strip_prefix("BGColor=") { if v.trim().starts_with('#') { bg_color = v.trim().to_string() } }
+    }
+    if typ != "Application" || hidden || name.is_empty() || exec.is_empty() { return None }
+    Some(App { name, icon_path: resolve_icon(&icon), exec: clean_exec(&exec), direct_round, bg_color })
+}
+
+/// Bundled fallback shown when ~/.VamoraSys/althyn/dock/contents/ has no
+/// valid entries, mirroring the Settings .desktop file shipped alongside
+/// the dock (VamoraPackage set => direct-round-safe icon).
+fn fallback_settings_app() -> App {
+    App {
+        name: "Settings".to_string(),
+        icon_path: resolve_icon("/etc/VamoraSys/alpha-temp/icons/settings.png"),
+        exec: "vamora-settings".to_string(),
+        direct_round: true,
+        bg_color: String::new(),
+    }
+}
+
+fn clean_exec(exec: &str) -> String {
+    let mut out = String::new();
+    let mut c = exec.chars().peekable();
+    while let Some(x) = c.next() {
+        if x == '%' { c.next(); } else { out.push(x); }
+    }
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn resolve_icon(icon: &str) -> String {
+    if icon.is_empty() { return String::new() }
+    if icon.starts_with('/') && Path::new(icon).exists() { return format!("file://{icon}") }
+    for p in [
+        format!("/usr/share/icons/hicolor/48x48/apps/{icon}.png"),
+        format!("/usr/share/icons/hicolor/scalable/apps/{icon}.svg"),
+        format!("/usr/share/pixmaps/{icon}.png"),
+        format!("/usr/share/pixmaps/{icon}.svg"),
+    ] {
+        if Path::new(&p).exists() { return format!("file://{p}") }
+    }
+    String::new()
 }
 
 fn json_escape(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('"', "\\\"")
+    s.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n").replace('\r', "\\r")
+}
+
+fn apps_to_json(apps: &[App]) -> String {
+    let mut o = String::from("[");
+    for (i, a) in apps.iter().enumerate() {
+        if i > 0 { o.push(',') }
+        o.push_str(&format!(
+            r#"{{"appName":"{}","iconPath":"{}","execStr":"{}","directRound":{},"bgColor":"{}"}}"#,
+            json_escape(&a.name), json_escape(&a.icon_path), json_escape(&a.exec), a.direct_round, json_escape(&a.bg_color)
+        ));
+    }
+    o.push(']');
+    o
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test] fn exec_codes_removed() { assert_eq!(clean_exec("foo %U --bar"), "foo --bar"); }
+    #[test] fn fallback_is_direct_round() { assert!(fallback_settings_app().direct_round); }
 }

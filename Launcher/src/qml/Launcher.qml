@@ -233,11 +233,16 @@ Window {
                                 || modelData.iconPath === ""
                                 || !!modelData.directRound
 
+                        // BGColor=#RRGGBB from the .desktop file, if any —
+                        // falls back to white, same as the homescreen.
+                        readonly property string effectiveBgColor:
+                            (modelData.bgColor && modelData.bgColor !== "") ? modelData.bgColor : "#ffffff"
+
                         Rectangle {
                             id: adaptiveBg
                             anchors.fill: parent
                             radius: launcher.iconRadius(width)
-                            color: "#ffffff"
+                            color: resultIconSlot.effectiveBgColor
                             visible: !resultIconSlot.directRound
                         }
 

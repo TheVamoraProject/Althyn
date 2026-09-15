@@ -34,10 +34,17 @@ Window {
     readonly property int hiddenWindowHeight: 3
     readonly property int visibleWindowHeight: iconSize + dockPadding * 2 + dockMarginBottom + tooltipHeadroom
 
-    property var dummyApps: []
-    readonly property int dockBarWidth: dummyApps.length > 0
-        ? dummyApps.length * iconSize + (dummyApps.length - 1) * iconSpacing + dockPadding * 2
+    property var apps: []
+    readonly property int dockBarWidth: apps.length > 0
+        ? apps.length * iconSize + (apps.length - 1) * iconSpacing + dockPadding * 2
         : iconSize + dockPadding * 2
+    // icons.corner_radius from VamoraSys (0-32, 32 = full circle), same
+    // convention as the launcher, homescreen and start menu.
+    property real iconCornerRadiusRaw: 8
+    // Dock bar background follows the same corner-radius setting as the
+    // icons inside it, scaled against its own height (32 = full pill,
+    // same "32 at any size" convention as the icons).
+    readonly property real dockBarRadius: Math.min(iconCornerRadiusRaw, 32) / 32 * ((iconSize + dockPadding * 2) / 2)
 
     width: screen.width
     // No Behavior here on purpose — resizing the actual OS window every
@@ -55,7 +62,28 @@ Window {
         id: autoHide
     }
 
-    Component.onCompleted: dummyApps = JSON.parse(dockModel.getDummyAppsJson())
+    function load() {
+        apps = JSON.parse(dockModel.getAppsJson())
+        iconCornerRadiusRaw = parseFloat(dockModel.getIconCornerRadius()) || iconCornerRadiusRaw
+    }
+    Component.onCompleted: load()
+
+    // Dock contents (~/.VamoraSys/althyn/dock/contents/*.desktop) and
+    // icons.corner_radius can both change while the dock is running —
+    // the dock never closes, so it re-scans periodically rather than
+    // only reading once at startup like the launcher does.
+    Timer {
+        interval: 3000
+        running: true
+        repeat: true
+        onTriggered: {
+            apps = JSON.parse(dockModel.getAppsJson())
+            var freshRadius = parseFloat(dockModel.getIconCornerRadius())
+            if (!isNaN(freshRadius) && freshRadius !== window.iconCornerRadiusRaw) {
+                window.iconCornerRadiusRaw = freshRadius
+            }
+        }
+    }
 
     property bool systemWantsHide: false
     readonly property bool hoverRaw: revealArea.containsMouse || dockMouseTracker.containsMouse
@@ -129,7 +157,7 @@ Window {
         id: dockBar
         width: window.dockBarWidth
         height: window.iconSize + window.dockPadding * 2
-        radius: 18
+        radius: window.dockBarRadius
         color: window.cBarBg
         border.width: 1
         border.color: window.cBorder
@@ -160,13 +188,16 @@ Window {
             spacing: window.iconSpacing
 
             Repeater {
-                model: window.dummyApps
+                model: window.apps
 
                 delegate: DockIcon {
                     baseSize: window.iconSize
                     iconSource: modelData.iconPath
                     appName: modelData.appName
-                    onClicked: dockModel.launchApp(modelData.appName)
+                    directRound: !!modelData.directRound || modelData.iconPath === ""
+                    bgColor: modelData.bgColor || ""
+                    iconCornerRadiusRaw: window.iconCornerRadiusRaw
+                    onClicked: dockModel.launchApp(modelData.execStr)
                 }
             }
         }

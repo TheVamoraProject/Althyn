@@ -18,6 +18,10 @@ Button {
     // instead, since rounding an arbitrary, possibly non-square icon
     // directly can clip it.
     property bool directRound: true
+    // BGColor=#RRGGBB from the .desktop file, if any — falls back to
+    // white, same as the homescreen.
+    property string bgColor: ""
+    readonly property string effectiveBgColor: bgColor !== "" ? bgColor : "#ffffff"
     // icons.corner_radius from VamoraSys (0-32, 32 = full circle).
     property real iconCornerRadiusRaw: 8
 
@@ -53,8 +57,21 @@ Button {
                 id: adaptiveBg
                 anchors.fill: parent
                 radius: iconSlot.radiusFor(width)
-                color: "#ffffff"
+                color: effectiveBgColor
                 visible: !directRound
+            }
+
+            // Same backdrop behind a direct-round icon too — a verified
+            // square icon can still have transparent padding/corners, so
+            // this keeps it from showing the menu background through
+            // instead of a solid tile. Same convention as the
+            // homescreen's AppTile.
+            Rectangle {
+                id: directRoundBg
+                anchors.fill: parent
+                radius: iconSlot.radiusFor(width)
+                color: effectiveBgColor
+                visible: directRound
             }
 
             Image {
