@@ -29,6 +29,14 @@ const SOURCE_INDICATION_APPLICATION: u32 = 1;
 const NET_WM_STATE_ADD: u32 = 1;
 
 pub fn mark_as_dock(title: &'static str) {
+    // The desktop can expose XWayland even while Qt is running as a native
+    // Wayland client. In that case this dock is not present in the X11
+    // client list, so do not spend six seconds retrying or emit a misleading
+    // X11 warning. The X11 runner explicitly selects xcb when needed.
+    if !should_use_x11() {
+        return;
+    }
+
     thread::spawn(move || {
         if let Err(err) = try_mark_as_dock(title) {
             eprintln!(
@@ -38,6 +46,28 @@ pub fn mark_as_dock(title: &'static str) {
             );
         }
     });
+}
+
+fn should_use_x11() -> bool {
+    let qt_platform = std::env::var("QT_QPA_PLATFORM")
+        .unwrap_or_default()
+        .to_lowercase();
+    if qt_platform == "wayland" || qt_platform.starts_with("wayland-") {
+        return false;
+    }
+
+    if qt_platform == "xcb" {
+        return std::env::var_os("DISPLAY").is_some();
+    }
+
+    if std::env::var("XDG_SESSION_TYPE")
+        .unwrap_or_default()
+        .eq_ignore_ascii_case("wayland")
+    {
+        return false;
+    }
+
+    std::env::var_os("DISPLAY").is_some()
 }
 
 fn try_mark_as_dock(title: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -88,7 +118,46 @@ fn try_mark_as_dock(title: &str) -> Result<(), Box<dyn std::error::Error>> {
             send_net_wm_state_add(&conn, root, window, net_wm_state, net_wm_state_above)?;
 
             conn.flush()?;
-            return Ok(());
+            // Keep the EWMH hints alive. Some window managers (and some
+            // maximize/restack paths) can restack or rewrite dock metadata.
+            // The QML window is still allowed to autohide; this only keeps
+            // its tiny reveal strip and revealed surface above maximized
+            // application windows.
+            loop {
+                thread::sleep(Duration::from_millis(1000));
+
+                // The dock can be recreated by Qt, so always rediscover the
+                // current native window instead of assuming the XID remains
+                // valid forever.
+                let Some(current_window) = find_window(
+                    &conn,
+                    root,
+                    net_client_list,
+                    net_wm_pid,
+                    net_wm_name,
+                    utf8_string,
+                    my_pid,
+                    title,
+                )? else {
+                    continue;
+                };
+
+                conn.change_property32(
+                    PropMode::REPLACE,
+                    current_window,
+                    net_wm_window_type,
+                    AtomEnum::ATOM,
+                    &[net_wm_window_type_dock],
+                )?;
+                send_net_wm_state_add(
+                    &conn,
+                    root,
+                    current_window,
+                    net_wm_state,
+                    net_wm_state_above,
+                )?;
+                conn.flush()?;
+            }
         }
 
         if attempt + 1 < MAX_ATTEMPTS {

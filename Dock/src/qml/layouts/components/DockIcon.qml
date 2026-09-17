@@ -7,6 +7,8 @@ Item {
     property string iconSource: ""
     property string appName: ""
     property int baseSize: 52
+    property int openWindowCount: 0
+    property int focusedWindowIndex: -1
     readonly property bool magnified: mouseArea.containsMouse
 
     // True for Vamora's own icons (no iconPath resolved) and for apps
@@ -125,6 +127,31 @@ Item {
             source: iconImage
             maskSource: iconMask
             visible: dockIcon.directRound
+        }
+
+        // EWMH taskbar-style indicators. There is one dot per managed window;
+        // the dot for the active window is longer so focus is visible without
+        // changing the icon itself.
+        Row {
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: -2
+            spacing: 2
+            z: 3
+
+            Repeater {
+                model: Math.max(0, dockIcon.openWindowCount)
+
+                delegate: Rectangle {
+                    readonly property bool isFocused: index === dockIcon.focusedWindowIndex
+                    width: isFocused ? 11 : 5
+                    height: 4
+                    radius: 2
+                    color: "#f4f4f5"
+                    border.width: 1
+                    border.color: "#66000000"
+                }
+            }
         }
     }
 

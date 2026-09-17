@@ -12,10 +12,10 @@ fn main() {
         engine.load(&QUrl::from("qrc:/layouts/dock/dock.qml"));
     }
 
-    // X11 only for now: tag ourselves as an EWMH dock and request
-    // _NET_WM_STATE_ABOVE so we don't end up stacked behind a window
-    // that just got maximized (which would eat the hover-to-reveal
-    // events at the bottom edge before we ever see them).
+    // X11 only for now: tag ourselves as an EWMH dock and keep the native
+    // dock window above maximized apps. QML still controls autohide, so this
+    // does NOT make the dock permanently visible; it only prevents the hidden
+    // reveal strip / revealed dock from getting buried by a maximized window.
     x11docktype::mark_as_dock(DOCK_TITLE);
 
     if let Some(app) = app.as_mut() {

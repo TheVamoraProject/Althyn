@@ -35,6 +35,7 @@ Window {
     readonly property int visibleWindowHeight: iconSize + dockPadding * 2 + dockMarginBottom + tooltipHeadroom
 
     property var apps: []
+    property var windowStates: ({})
     readonly property int dockBarWidth: apps.length > 0
         ? apps.length * iconSize + (apps.length - 1) * iconSpacing + dockPadding * 2
         : iconSize + dockPadding * 2
@@ -64,8 +65,23 @@ Window {
 
     function load() {
         apps = JSON.parse(dockModel.getAppsJson())
+        refreshWindowStates()
         iconCornerRadiusRaw = parseFloat(dockModel.getIconCornerRadius()) || iconCornerRadiusRaw
     }
+
+    function refreshWindowStates() {
+        var parsed = JSON.parse(dockModel.getWindowStatesJson())
+        var next = ({})
+        for (var i = 0; i < parsed.length; ++i) {
+            next[parsed[i].execStr] = parsed[i]
+        }
+        windowStates = next
+    }
+
+    function windowStateFor(execStr) {
+        return windowStates[execStr] || { windowCount: 0, focusedIndex: -1 }
+    }
+
     Component.onCompleted: load()
 
     // Dock contents (~/.VamoraSys/althyn/dock/contents/*.desktop) and
@@ -83,6 +99,16 @@ Window {
                 window.iconCornerRadiusRaw = freshRadius
             }
         }
+    }
+
+    // Window state changes are much more frequent than dock-content changes.
+    // Keep this poll cheap and separate so a focused window never rebuilds
+    // the Repeater or interrupts its hover animation.
+    Timer {
+        interval: 250
+        running: true
+        repeat: true
+        onTriggered: window.refreshWindowStates()
     }
 
     property bool systemWantsHide: false
@@ -145,11 +171,17 @@ Window {
         onTriggered: window.systemWantsHide = autoHide.shouldHide()
     }
 
-    // Covers the whole window, whatever its current height is — the 1px
-    // hidden strip included — so hovering it re-summons the dock.
+    // Keep the reveal target fixed to the bottom edge instead of covering the
+    // whole resizable window. When the dock expands, the cursor stays over
+    // this same 3px strip instead of leaving a MouseArea that just moved
+    // underneath it; that was the source of the up/down hover oscillation over
+    // maximized X11 windows.
     MouseArea {
         id: revealArea
-        anchors.fill: parent
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        height: window.hiddenWindowHeight
         hoverEnabled: true
     }
 
@@ -197,6 +229,8 @@ Window {
                     directRound: !!modelData.directRound || modelData.iconPath === ""
                     bgColor: modelData.bgColor || ""
                     iconCornerRadiusRaw: window.iconCornerRadiusRaw
+                    openWindowCount: window.windowStateFor(modelData.execStr).windowCount
+                    focusedWindowIndex: window.windowStateFor(modelData.execStr).focusedIndex
                     onClicked: dockModel.launchApp(modelData.execStr)
                 }
             }

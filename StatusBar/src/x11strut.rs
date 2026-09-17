@@ -81,7 +81,42 @@ fn try_reserve_top_strut(title: &str, height: i32) -> Result<(), Box<dyn std::er
                 &strut_partial,
             )?;
             conn.flush()?;
-            return Ok(());
+
+            // Keep the reservation alive. A few WMs recalculate work areas
+            // after maximize/unmaximize or desktop changes and can drop the
+            // effective strut until the property is written again.
+            loop {
+                thread::sleep(Duration::from_millis(1000));
+
+                let Some(current_window) = find_window(
+                    &conn,
+                    root,
+                    net_client_list,
+                    net_wm_pid,
+                    net_wm_name,
+                    utf8_string,
+                    my_pid,
+                    title,
+                )? else {
+                    continue;
+                };
+
+                conn.change_property32(
+                    PropMode::REPLACE,
+                    current_window,
+                    net_wm_strut,
+                    AtomEnum::CARDINAL,
+                    &strut,
+                )?;
+                conn.change_property32(
+                    PropMode::REPLACE,
+                    current_window,
+                    net_wm_strut_partial,
+                    AtomEnum::CARDINAL,
+                    &strut_partial,
+                )?;
+                conn.flush()?;
+            }
         }
 
         if attempt + 1 < MAX_ATTEMPTS {

@@ -23,6 +23,14 @@ pub mod qobject {
         #[cxx_name = "getAppsJson"]
         fn get_apps_json(self: &DockModel) -> QString;
 
+        /// Returns JSON window counts for the applications currently pinned
+        /// in the dock. On X11 this is derived from EWMH client-list data;
+        /// on Wayland it is intentionally empty until a compositor-side
+        /// protocol is available.
+        #[qinvokable]
+        #[cxx_name = "getWindowStatesJson"]
+        fn get_window_states_json(self: &DockModel) -> QString;
+
         /// Launches a dock entry's Exec string.
         #[qinvokable]
         #[cxx_name = "launchApp"]
@@ -38,6 +46,7 @@ pub mod qobject {
 }
 
 use cxx_qt_lib::QString;
+use crate::x11maximize;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -50,6 +59,7 @@ struct App {
     exec: String,
     direct_round: bool,
     bg_color: String,
+    startup_wm_class: String,
 }
 
 impl qobject::DockModel {
@@ -61,8 +71,44 @@ impl qobject::DockModel {
         QString::from(apps_to_json(&apps).as_str())
     }
 
+    pub fn get_window_states_json(&self) -> QString {
+        let mut apps = scan_dock_contents();
+        if apps.is_empty() {
+            apps.push(fallback_settings_app());
+        }
+
+        let matches = apps
+            .iter()
+            .map(|app| x11maximize::WindowMatch {
+                key: app.exec.clone(),
+                app_name: app.name.clone(),
+                startup_wm_class: app.startup_wm_class.clone(),
+                exec_binary: command_binary(&app.exec),
+            })
+            .collect::<Vec<_>>();
+        let states = x11maximize::window_states_for_apps(&matches);
+
+        let mut json = String::from("[");
+        for (index, state) in states.iter().enumerate() {
+            if index > 0 {
+                json.push(',');
+            }
+            json.push_str(&format!(
+                r#"{{"execStr":"{}","windowCount":{},"focusedIndex":{}}}"#,
+                json_escape(&state.key),
+                state.window_count,
+                state.focused_index
+            ));
+        }
+        json.push(']');
+        QString::from(json.as_str())
+    }
+
     pub fn launch_app(&self, exec: &QString) {
         let cleaned = clean_exec(&format!("{}", exec));
+        if x11maximize::activate_window_for_exec(&cleaned) {
+            return;
+        }
         let mut parts = cleaned.split_whitespace();
         if let Some(bin) = parts.next() {
             let _ = Command::new(bin).args(parts).spawn();
@@ -115,6 +161,7 @@ fn parse_desktop_file(path: &Path) -> Option<App> {
     let mut hidden = false;
     let mut direct_round = false;
     let mut bg_color = String::new();
+    let mut startup_wm_class = String::new();
     for line in content.lines().map(str::trim) {
         if line == "[Desktop Entry]" { active = true; continue }
         if line.starts_with('[') && active { break }
@@ -126,9 +173,18 @@ fn parse_desktop_file(path: &Path) -> Option<App> {
         else if line == "NoDisplay=true" || line == "Hidden=true" { hidden = true }
         else if let Some(v) = line.strip_prefix("VamoraPackage=") { if !v.trim().is_empty() { direct_round = true } }
         else if let Some(v) = line.strip_prefix("BGColor=") { if v.trim().starts_with('#') { bg_color = v.trim().to_string() } }
+        else if let Some(v) = line.strip_prefix("StartupWMClass=") { if startup_wm_class.is_empty() { startup_wm_class = v.trim().to_string() } }
+        else if let Some(v) = line.strip_prefix("X-GNOME-WMClass=") { if startup_wm_class.is_empty() { startup_wm_class = v.trim().to_string() } }
     }
     if typ != "Application" || hidden || name.is_empty() || exec.is_empty() { return None }
-    Some(App { name, icon_path: resolve_icon(&icon), exec: clean_exec(&exec), direct_round, bg_color })
+    Some(App {
+        name,
+        icon_path: resolve_icon(&icon),
+        exec: clean_exec(&exec),
+        direct_round,
+        bg_color,
+        startup_wm_class,
+    })
 }
 
 /// Bundled fallback shown when ~/.VamoraSys/althyn/dock/contents/ has no
@@ -141,6 +197,7 @@ fn fallback_settings_app() -> App {
         exec: "vamora-settings".to_string(),
         direct_round: true,
         bg_color: String::new(),
+        startup_wm_class: String::new(),
     }
 }
 
@@ -151,6 +208,15 @@ fn clean_exec(exec: &str) -> String {
         if x == '%' { c.next(); } else { out.push(x); }
     }
     out.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn command_binary(exec: &str) -> String {
+    exec.split_whitespace()
+        .next()
+        .and_then(|part| Path::new(part).file_name())
+        .and_then(|name| name.to_str())
+        .unwrap_or_default()
+        .to_lowercase()
 }
 
 fn resolve_icon(icon: &str) -> String {
