@@ -19,7 +19,17 @@ Item {
     property string installError: ""
     property bool installBusy: false
 
+    // Tracks whether we've already popped the "missing" dialog for the
+    // current load attempt. We can't gate on webViewMissingDialog.visible
+    // for this because Popup.open() doesn't flip visible synchronously,
+    // so a Loader that reports Error more than once for the same attempt
+    // (e.g. while its source is being reset) could otherwise reopen the
+    // dialog on top of itself — a second, unstyled copy stacked over the
+    // first, showing the same message.
+    property bool missingDialogShown: false
+
     function retryWebView() {
+        missingDialogShown = false
         webViewLoader.source = ""
         webViewRetry.start()
     }
@@ -151,14 +161,23 @@ Item {
                     anchors.fill: parent
                     source: "HelpWebView.qml"
                     onStatusChanged: {
-                        if (status === Loader.Error && !webViewMissingDialog.visible)
+                        if (status === Loader.Error && !helpPage.missingDialogShown) {
+                            helpPage.missingDialogShown = true
                             webViewMissingDialog.open()
+                        } else if (status === Loader.Ready) {
+                            helpPage.missingDialogShown = false
+                        }
                     }
                 }
 
                 Rectangle {
                     anchors.fill: parent
-                    visible: webViewLoader.status !== Loader.Ready
+                    // Hidden while the dialog is up front — otherwise this
+                    // panel's own "unavailable" message sits directly behind
+                    // the modal with nothing (no card, no border) setting it
+                    // apart from the plain page background, so it reads as a
+                    // second, background-less dialog repeating the same text.
+                    visible: webViewLoader.status !== Loader.Ready && !webViewMissingDialog.opened
                     color: helpPage.pageBg
                     Column {
                         anchors.centerIn: parent

@@ -351,6 +351,8 @@ Item {
 
                             rowLabel: "VPN"
 
+                            isFirst: true
+
                             rowValue: connectionsPage.vpnConnected
                                       ? "Connected"
                                       : "Not connected"
@@ -387,6 +389,8 @@ Item {
                             width: parent.width
 
                             rowLabel: "Printing"
+
+                            isLast: true
 
                             rowValue: connectionsPage.printingEnabled
                                       ? "On"
@@ -450,6 +454,7 @@ Item {
                             width: parent.width
 
                             rowLabel: "Available networks"
+                            isFirst: true
                             rowValue: "Scan"
                             rowIcon: "search"
 
@@ -470,6 +475,7 @@ Item {
                             width: parent.width
 
                             rowLabel: "Wi-Fi preferences"
+                            isLast: true
                             rowValue: ""
                             rowIcon: "settings"
 
@@ -524,6 +530,7 @@ Item {
                             width: parent.width
 
                             rowLabel: "Pair new device"
+                            isFirst: true
                             rowValue: ""
                             rowIcon: ""
 
@@ -544,6 +551,7 @@ Item {
                             width: parent.width
 
                             rowLabel: "Bluetooth preferences"
+                            isLast: true
                             rowValue: ""
                             rowIcon: "settings"
 
@@ -598,6 +606,7 @@ Item {
                             width: parent.width
 
                             rowLabel: "Add VPN"
+                            isFirst: true
                             rowValue: ""
                             rowIcon: ""
 
@@ -608,6 +617,7 @@ Item {
                             width: parent.width
 
                             rowLabel: "VPN preferences"
+                            isLast: true
                             rowValue: ""
                             rowIcon: "settings"
 
@@ -663,6 +673,8 @@ Item {
 
                             rowLabel: "Private DNS mode"
 
+                            isFirst: true
+
                             rowValue: connectionsPage.privateDnsEnabled
                                       ? "Provider"
                                       : "Automatic"
@@ -676,6 +688,8 @@ Item {
                             width: parent.width
 
                             rowLabel: "DNS provider"
+
+                            isLast: true
 
                             rowValue: ""
                             rowIcon: ""
@@ -732,6 +746,8 @@ Item {
 
                             rowLabel: "Default printer"
 
+                            isFirst: true
+
                             rowValue: "None"
 
                             rowIcon: "hard-drive"
@@ -743,6 +759,8 @@ Item {
                             width: parent.width
 
                             rowLabel: "Add printer"
+
+                            isLast: true
 
                             rowValue: ""
                             rowIcon: ""

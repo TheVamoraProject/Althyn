@@ -523,7 +523,7 @@ Item {
                                 required property var modelData
                                 required property int index
                                 width: linksCol.width; height: 50
-                                color: lhov ? "#252525" : "transparent"
+                                color: lhov ? aboutPage.pageHover : "transparent"
                                 Behavior on color { ColorAnimation { duration: 100 } }
                                 property bool lhov: false
 
@@ -624,7 +624,7 @@ Item {
                                 required property var modelData
                                 required property int index
                                 width: althynLinksCol.width; height: 50
-                                color: alhov ? "#252525" : "transparent"
+                                color: alhov ? aboutPage.pageHover : "transparent"
                                 Behavior on color { ColorAnimation { duration: 100 } }
                                 property bool alhov: false
 

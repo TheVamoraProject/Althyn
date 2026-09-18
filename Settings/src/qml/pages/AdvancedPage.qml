@@ -6,6 +6,11 @@ import "../components"
 Item {
     anchors.fill: parent
 
+    readonly property var settingsWindow: ApplicationWindow.window
+    readonly property bool dark: !settingsWindow || settingsWindow.darkTheme
+    readonly property color pageCard: dark ? "#1e1e1e" : "#ffffff"
+    readonly property color pageText: dark ? "#f0f0f0" : "#18181b"
+
     property bool screenLock:  true
     property bool biometric:   false
     property bool location:    false
@@ -41,7 +46,7 @@ Item {
                 Layout.leftMargin: 28
                 Layout.rightMargin: 28
                 text: "Security & Privacy"
-                color: "#f0f0f0"
+                color: pageText
                 font.pixelSize: 26
                 font.bold: true
             }
@@ -54,7 +59,7 @@ Item {
                 SectionHeader { label: "Screen Security" }
 
                 Rectangle {
-                    Layout.fillWidth: true; radius: 14; color: "#1e1e1e"; clip: true
+                    Layout.fillWidth: true; radius: 14; color: pageCard; clip: true
                     implicitHeight: screenGroup.implicitHeight
                     Column {
                         id: screenGroup; anchors { left: parent.left; right: parent.right }
@@ -81,7 +86,7 @@ Item {
                 SectionHeader { label: "Privacy" }
 
                 Rectangle {
-                    Layout.fillWidth: true; radius: 14; color: "#1e1e1e"; clip: true
+                    Layout.fillWidth: true; radius: 14; color: pageCard; clip: true
                     implicitHeight: privacyGroup.implicitHeight
                     Column {
                         id: privacyGroup; anchors { left: parent.left; right: parent.right }
@@ -102,7 +107,7 @@ Item {
                 SectionHeader { label: "Firewall" }
 
                 Rectangle {
-                    Layout.fillWidth: true; radius: 14; color: "#1e1e1e"; clip: true
+                    Layout.fillWidth: true; radius: 14; color: pageCard; clip: true
                     implicitHeight: fwGroup.implicitHeight
                     Column {
                         id: fwGroup; anchors { left: parent.left; right: parent.right }
@@ -128,7 +133,7 @@ Item {
                 SectionHeader { label: "System" }
 
                 Rectangle {
-                    Layout.fillWidth: true; radius: 14; color: "#1e1e1e"; clip: true
+                    Layout.fillWidth: true; radius: 14; color: pageCard; clip: true
                     implicitHeight: sysSecGroup.implicitHeight
                     Column {
                         id: sysSecGroup; anchors { left: parent.left; right: parent.right }

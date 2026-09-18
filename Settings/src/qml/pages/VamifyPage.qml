@@ -772,10 +772,18 @@ Item {
             }
         }
 
-        ColumnLayout {
-            spacing: 10; width: parent.width
+        Column {
+            id: valueDialogContent
+            width: parent.width
+            topPadding: 16
+            bottomPadding: 16
+            leftPadding: 20
+            rightPadding: 20
+
             Rectangle {
-                Layout.fillWidth: true; height: 42; radius: 10
+                width: valueDialogContent.width - valueDialogContent.leftPadding - valueDialogContent.rightPadding
+                height: 42
+                radius: 10
                 color: vamifyPage.currentTheme === "light" ? "#f4f4f5" : "#141414"
                 border { color: valueInput.activeFocus ? vamifyPage.accentColor : vamifyPage.pageBorder; width: 1 }
                 Behavior on border.color { ColorAnimation { duration: 120 } }
@@ -1048,7 +1056,6 @@ Item {
                                 rowValue: "Default"
                                 rowIcon: "panel-bottom"
                                 tappable: true
-                                isLast: true
                                 onTapped: vamifyPage.activeSection = "dock"
                             }
                             SettingsRow {
@@ -1089,6 +1096,7 @@ Item {
                                 rowValue: vamifyPage.bootDefaultEntry
                                 rowIcon: "power"
                                 tappable: true
+                                isLast: true
                                 onTapped: vamifyPage.activeSection = "bootloader"
                             }
                             Text {
@@ -1679,7 +1687,7 @@ Item {
 
                     Card {
                         implicitHeight: gridColumn.implicitHeight
-                        content: ColumnLayout {
+                        content: Column {
                             id: gridColumn
                             Layout.fillWidth: true
                             SettingsRow {
@@ -1739,7 +1747,7 @@ Item {
                             }
                             SettingsRow {
                                 width: parent.width; rowLabel: "Wallpaper"; rowValue: vamifyPage.lockWallpaper; rowIcon: "image"
-                                tappable: true
+                                tappable: true; isLast: true
                                 onTapped: valueDialog.openFor("Lockscreen wallpaper", vamifyPage.lockWallpaper, function(v) { vamifyPage.setStringSetting("lockscreen.wallpaper", "lockWallpaper", v) })
                             }
                         }

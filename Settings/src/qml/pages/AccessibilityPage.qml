@@ -6,6 +6,13 @@ import "../components"
 Item {
     anchors.fill: parent
 
+    readonly property var settingsWindow: ApplicationWindow.window
+    readonly property bool dark: !settingsWindow || settingsWindow.darkTheme
+    readonly property color pageCard: dark ? "#1e1e1e" : "#ffffff"
+    readonly property color pageText: dark ? "#f0f0f0" : "#18181b"
+    readonly property color pageDivider: dark ? "#252525" : "#e4e4e7"
+    readonly property color pageInputBg: dark ? "#2a2a2a" : "#f4f4f5"
+
     // Mock state
     property bool   highContrast:    false
     property bool   largeText:       false
@@ -45,7 +52,7 @@ Item {
                 Layout.leftMargin: 28
                 Layout.rightMargin: 28
                 text: "Accessibility"
-                color: "#f0f0f0"
+                color: pageText
                 font.pixelSize: 26
                 font.bold: true
             }
@@ -58,7 +65,7 @@ Item {
                 SectionHeader { label: "Vision" }
 
                 Rectangle {
-                    Layout.fillWidth: true; radius: 14; color: "#1e1e1e"; clip: true
+                    Layout.fillWidth: true; radius: 14; color: pageCard; clip: true
                     implicitHeight: visionGroup.implicitHeight
                     Column {
                         id: visionGroup; anchors { left: parent.left; right: parent.right }
@@ -70,10 +77,10 @@ Item {
                         // Text scale slider
                         Rectangle {
                             width: parent.width; height: 76; color: "transparent"
-                            Rectangle { anchors { left: parent.left; right: parent.right; leftMargin: 16; top: parent.top }; height: 1; color: "#252525" }
+                            Rectangle { anchors { left: parent.left; right: parent.right; leftMargin: 16; top: parent.top }; height: 1; color: pageDivider }
                             ColumnLayout { anchors { fill: parent; leftMargin: 16; rightMargin: 16; topMargin: 10 }; spacing: 6
                                 RowLayout {
-                                    Text { text: "Text Scale"; color: "#f0f0f0"; font.pixelSize: 14; Layout.fillWidth: true }
+                                    Text { text: "Text Scale"; color: pageText; font.pixelSize: 14; Layout.fillWidth: true }
                                     Text { text: Math.round(textScale*100)+"%"; color: ApplicationWindow.window.accentColor; font { pixelSize: 13; weight: Font.Medium } }
                                 }
                                 StyledSlider { Layout.fillWidth: true; from: 0.75; to: 2.0; stepSize: 0.05; value: textScale; onMoved: textScale=value }
@@ -83,14 +90,14 @@ Item {
                         // Colour blindness
                         Rectangle {
                             width: parent.width; height: 52; color: "transparent"
-                            Rectangle { anchors { left: parent.left; right: parent.right; leftMargin: 16; top: parent.top }; height: 1; color: "#252525" }
+                            Rectangle { anchors { left: parent.left; right: parent.right; leftMargin: 16; top: parent.top }; height: 1; color: pageDivider }
                             RowLayout { anchors { fill: parent; leftMargin: 16; rightMargin: 16 }
-                                Text { text: "Colour Blindness Filter"; color: "#f0f0f0"; font.pixelSize: 14; Layout.fillWidth: true }
+                                Text { text: "Colour Blindness Filter"; color: pageText; font.pixelSize: 14; Layout.fillWidth: true }
                                 ComboBox {
                                     model: ["None","Deuteranopia","Protanopia","Tritanopia"]
                                     currentIndex: 0
-                                    background: Rectangle { color: "#2a2a2a"; radius: 8 }
-                                    contentItem: Text { text: parent.displayText; color: "#f0f0f0"; font.pixelSize: 12; leftPadding: 10; verticalAlignment: Text.AlignVCenter }
+                                    background: Rectangle { color: pageInputBg; radius: 8 }
+                                    contentItem: Text { text: parent.displayText; color: pageText; font.pixelSize: 12; leftPadding: 10; verticalAlignment: Text.AlignVCenter }
                                     onActivated: colorBlindMode = currentText
                                 }
                             }
@@ -101,17 +108,17 @@ Item {
                 SectionHeader { label: "Screen Reader" }
 
                 Rectangle {
-                    Layout.fillWidth: true; radius: 14; color: "#1e1e1e"; clip: true
+                    Layout.fillWidth: true; radius: 14; color: pageCard; clip: true
                     implicitHeight: srGroup.implicitHeight
                     Column {
                         id: srGroup; anchors { left: parent.left; right: parent.right }
                         ToggleRow { width: parent.width; rowLabel: "Screen Reader"; rowSub: "Read aloud interface elements"; on_: screenReader; isFirst: true; onToggled: function(v){ screenReader=v } }
                         Rectangle {
                             width: parent.width; height: 76; color: "transparent"
-                            Rectangle { anchors { left: parent.left; right: parent.right; leftMargin: 16; top: parent.top }; height: 1; color: "#252525" }
+                            Rectangle { anchors { left: parent.left; right: parent.right; leftMargin: 16; top: parent.top }; height: 1; color: pageDivider }
                             ColumnLayout { anchors { fill: parent; leftMargin: 16; rightMargin: 16; topMargin: 10 }; spacing: 6
                                 RowLayout {
-                                    Text { text: "Reading Speed"; color: "#f0f0f0"; font.pixelSize: 14; Layout.fillWidth: true }
+                                    Text { text: "Reading Speed"; color: pageText; font.pixelSize: 14; Layout.fillWidth: true }
                                     Text { text: Math.round(readerSpeed*100)+"%"; color: ApplicationWindow.window.accentColor; font { pixelSize: 13; weight: Font.Medium } }
                                 }
                                 StyledSlider { Layout.fillWidth: true; from: 0.5; to: 2.0; stepSize: 0.1; value: readerSpeed; onMoved: readerSpeed=value }
@@ -123,7 +130,7 @@ Item {
                 SectionHeader { label: "Hearing" }
 
                 Rectangle {
-                    Layout.fillWidth: true; radius: 14; color: "#1e1e1e"; clip: true
+                    Layout.fillWidth: true; radius: 14; color: pageCard; clip: true
                     implicitHeight: hearGroup.implicitHeight
                     Column {
                         id: hearGroup; anchors { left: parent.left; right: parent.right }
@@ -135,7 +142,7 @@ Item {
                 SectionHeader { label: "Dexterity" }
 
                 Rectangle {
-                    Layout.fillWidth: true; radius: 14; color: "#1e1e1e"; clip: true
+                    Layout.fillWidth: true; radius: 14; color: pageCard; clip: true
                     implicitHeight: dexGroup.implicitHeight
                     Column {
                         id: dexGroup; anchors { left: parent.left; right: parent.right }
@@ -146,10 +153,10 @@ Item {
                         ToggleRow { width: parent.width; rowLabel: "Mouse Keys"; rowSub: "Control pointer with keyboard numpad"; on_: mouseKeys; onToggled: function(v){ mouseKeys=v } }
                         Rectangle {
                             width: parent.width; height: 76; color: "transparent"
-                            Rectangle { anchors { left: parent.left; right: parent.right; leftMargin: 16; top: parent.top }; height: 1; color: "#252525" }
+                            Rectangle { anchors { left: parent.left; right: parent.right; leftMargin: 16; top: parent.top }; height: 1; color: pageDivider }
                             ColumnLayout { anchors { fill: parent; leftMargin: 16; rightMargin: 16; topMargin: 10 }; spacing: 6
                                 RowLayout {
-                                    Text { text: "Pointer Speed"; color: "#f0f0f0"; font.pixelSize: 14; Layout.fillWidth: true }
+                                    Text { text: "Pointer Speed"; color: pageText; font.pixelSize: 14; Layout.fillWidth: true }
                                     Text { text: Math.round(pointerSpeed*100)+"%"; color: ApplicationWindow.window.accentColor; font { pixelSize: 13; weight: Font.Medium } }
                                 }
                                 StyledSlider { Layout.fillWidth: true; from: 0; to: 1; stepSize: 0.05; value: pointerSpeed; onMoved: pointerSpeed=value }
