@@ -1,6 +1,10 @@
-//! Reserves screen space for the status bar on X11
-//! X11 window managers (tested in Openbox) don't let maximized
-//! windows sit underneath the bar.
+//! Reserves screen space for the status bar on X11 and marks it as an EWMH
+//! dock so tiling WMs (i3, etc.) don't tile it into the layout like a
+//! normal client. Openbox honored the strut alone without a window type,
+//! but tiling WMs decide whether to manage/tile a window based on
+//! _NET_WM_WINDOW_TYPE, not on whether strut props are set — without the
+//! dock type, i3 tiled the bar as a regular window and the struts never
+//! got a chance to matter. Mirrors vamora-dock's x11docktype.rs.
 //!
 //! This is X11-only. On Wayland this does nothing (it just sits in the center)
 
@@ -35,6 +39,8 @@ fn try_reserve_top_strut(title: &str, height: i32) -> Result<(), Box<dyn std::er
     let utf8_string = intern(&conn, b"UTF8_STRING")?;
     let net_wm_strut = intern(&conn, b"_NET_WM_STRUT")?;
     let net_wm_strut_partial = intern(&conn, b"_NET_WM_STRUT_PARTIAL")?;
+    let net_wm_window_type = intern(&conn, b"_NET_WM_WINDOW_TYPE")?;
+    let net_wm_window_type_dock = intern(&conn, b"_NET_WM_WINDOW_TYPE_DOCK")?;
 
     const MAX_ATTEMPTS: u32 = 30;
     const RETRY_DELAY: Duration = Duration::from_millis(200);
@@ -66,6 +72,16 @@ fn try_reserve_top_strut(title: &str, height: i32) -> Result<(), Box<dyn std::er
                 0,
             ];
 
+            // Tiling WMs (i3, etc.) decide whether to tile a window based on
+            // this, not on the strut props below — set it first so the bar
+            // is treated as a panel at all, then reserve the strut space.
+            conn.change_property32(
+                PropMode::REPLACE,
+                window,
+                net_wm_window_type,
+                AtomEnum::ATOM,
+                &[net_wm_window_type_dock],
+            )?;
             conn.change_property32(
                 PropMode::REPLACE,
                 window,
@@ -101,6 +117,13 @@ fn try_reserve_top_strut(title: &str, height: i32) -> Result<(), Box<dyn std::er
                     continue;
                 };
 
+                conn.change_property32(
+                    PropMode::REPLACE,
+                    current_window,
+                    net_wm_window_type,
+                    AtomEnum::ATOM,
+                    &[net_wm_window_type_dock],
+                )?;
                 conn.change_property32(
                     PropMode::REPLACE,
                     current_window,

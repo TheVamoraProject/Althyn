@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import Qt5Compat.GraphicalEffects
 import dev.vamoraos.SysInfo 1.0
 import "../components"
 
@@ -23,8 +24,21 @@ Item {
     // the accent's luminance so it stays readable on any color.
     readonly property color bannerAccent: settingsWindow ? settingsWindow.accentColor : "#2563eb"
     readonly property real bannerLuminance: 0.2126 * bannerAccent.r + 0.7152 * bannerAccent.g + 0.0722 * bannerAccent.b
-    readonly property color bannerText: bannerLuminance > 0.55 ? "#07111f" : "#ffffff"
-    readonly property color bannerTextMuted: bannerLuminance > 0.55 ? Qt.rgba(7/255, 17/255, 31/255, 0.68) : Qt.rgba(1, 1, 1, 0.72)
+    readonly property bool bannerIsLight: bannerLuminance > 0.55
+    // Keep the accent's own hue/saturation instead of falling back to flat
+    // black/white — a light sky-blue banner gets a deep blue-black ink, a
+    // pale lilac banner gets a deep plum-black, a dark violet banner gets a
+    // soft lavender-white, etc. Saturation is floored on the dark side (so
+    // washed-out accents still read as tinted, not gray) and damped on the
+    // light side (so the near-white text doesn't turn pastel).
+    readonly property real bannerHue: bannerAccent.hslHue
+    readonly property real bannerSat: bannerAccent.hslSaturation
+    readonly property color bannerText: bannerIsLight
+        ? Qt.hsla(bannerHue, Math.max(bannerSat, 0.35), 0.14, 1.0)
+        : Qt.hsla(bannerHue, bannerSat * 0.45, 0.95, 1.0)
+    readonly property color bannerTextMuted: bannerIsLight
+        ? Qt.hsla(bannerHue, Math.max(bannerSat, 0.35), 0.14, 0.68)
+        : Qt.hsla(bannerHue, bannerSat * 0.45, 0.95, 0.72)
     property var hardwareRows: []
     property string hardwareError: ""
     readonly property bool isVamoraDesktop: {
@@ -195,9 +209,13 @@ Item {
                 spacing: 14
 
                 // ── Banner ────────────────────────────────────────────────────
+                // Taller, ColorOS-style hero: big wordmark image (recolored to
+                // match the banner text color the same way the accent-driven
+                // gradient picks its text color) with the version caption
+                // underneath.
                 Rectangle {
                     Layout.fillWidth: true
-                    height: 168
+                    height: 260
                     radius: 24
                     clip: true
 
@@ -221,14 +239,30 @@ Item {
 
                     ColumnLayout {
                         anchors.centerIn: parent
-                        spacing: 6
+                        spacing: 10
 
-                             Text {
+                        Item {
+                            id: bannerWordmarkBox
                             Layout.alignment: Qt.AlignHCenter
-                            text: "VamoraOS"
-                             color: aboutPage.bannerText
-                            font { pixelSize: 42; weight: Font.Bold; letterSpacing: -1.5 }
-                            layer.enabled: true
+                            Layout.preferredWidth: Math.min(360, aboutPage.width - 80)
+                            Layout.preferredHeight: bannerWordmark.implicitWidth > 0
+                                ? Layout.preferredWidth * (bannerWordmark.implicitHeight / bannerWordmark.implicitWidth)
+                                : 64
+
+                            Image {
+                                id: bannerWordmark
+                                anchors.fill: parent
+                                source: "../assets/text-branding/vamoraostext.png"
+                                fillMode: Image.PreserveAspectFit
+                                smooth: true
+                                visible: false
+                            }
+
+                            ColorOverlay {
+                                anchors.fill: bannerWordmark
+                                source: bannerWordmark
+                                color: aboutPage.bannerText
+                            }
                         }
 
                         Text {
@@ -572,8 +606,8 @@ Item {
                     Image {
                         anchors.horizontalCenter: parent.horizontalCenter
                         width: 88; height: 88
-                        source: "../assets/Vamora.svg"
-                        sourceSize: Qt.size(88, 88)
+                        source: "../assets/Althyn.png"
+                        sourceSize: Qt.size(176, 176)
                         fillMode: Image.PreserveAspectFit
                     }
 

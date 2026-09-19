@@ -3,7 +3,11 @@
     <qresource prefix="/">
         <file>assets/Vamora.svg</file>
         <file>assets/Vamora.png</file>
-        <file>assets/Vano.svg</file>
+        <file>assets/Althyn.png</file>
+        <file>assets/text-branding/althyntext.png</file>
+        <file>assets/text-branding/vamoraostext.png</file>
+        <file>assets/text-branding/vamoratext.png</file>
+        <file>assets/text-branding/vamoratextWhiteBlue.png</file>
         <file>assets/fonts/inter/Inter-Regular.ttf</file>
         <file>assets/fonts/inter/Inter-Medium.ttf</file>
         <file>assets/fonts/inter/Inter-SemiBold.ttf</file>
