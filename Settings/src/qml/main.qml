@@ -314,7 +314,7 @@ ApplicationWindow {
         ListElement { settingId: "apps";           title: "Apps";               subtitle: "Installed apps & permissions";      icon: "apps";         page: "pages/AppsPage.qml" }
         ListElement { settingId: "accessibility";  title: "Accessibility";      subtitle: "Vision, hearing, dexterity";        icon: "accessibility"; page: "pages/AccessibilityPage.qml" }
         ListElement { settingId: "support";        title: "Help & Support";     subtitle: "Docs, diagnostics, updates";        icon: "help-circle";  page: "pages/HelpPage.qml" }
-        ListElement { settingId: "appsettings";           title: "Application settings";               subtitle: "All settings in one place";      icon: "settings";         page: "pages/AppSettingsPage.qml" }
+        ListElement { settingId: "appsettings";           title: "Application Settings";               subtitle: "All settings in one place";      icon: "settings";         page: "pages/AppSettingsPage.qml" }
     }
 
     function pageFor(id) {
