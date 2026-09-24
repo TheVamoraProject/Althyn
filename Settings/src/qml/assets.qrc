@@ -107,5 +107,6 @@
        <file>assets/icons/Printer.svg</file>
        <file>assets/icons/bluetooth.svg</file>
        <file>assets/icons/Wifi.svg</file>
+       <file>assets/icons/Cast.svg</file>
     </qresource>
 </RCC>
