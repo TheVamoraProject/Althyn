@@ -104,5 +104,6 @@
         <file>assets/icons/appicons/contacts.png</file>
         <file>assets/icons/appicons/files.png</file>
         <file>assets/icons/appicons/gallery.png</file>
+       <file>assets/icons/Printer.svg</file>
     </qresource>
 </RCC>
