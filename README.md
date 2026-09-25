@@ -19,7 +19,7 @@ The desktop environment components are managed as one Cargo workspace. Build
 all components from the repository root:
 
 ```bash
-cargo build --workspace
+cargo build --workspace --release
 ```
 
 Build or run one component with its package name:
