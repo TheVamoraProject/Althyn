@@ -1,0 +1,141 @@
+#!/bin/sh
+#
+# Althyn session launcher.
+#   althyn              -> Wayland session (althyn-core + swaybg)
+#   althyn --run-x11    -> X11 compat session (openbox + feh + picom)
+#
+# althyn-bar, althyn-home, and althyn-dock need to know which
+# protocol to speak for layer-shell placement (pinning/reserving screen
+# space), so they take --run-x11 when the session is X11. althyn-setup
+# is just a plain fullscreen setup screen with no layer/space allocation,
+# so it never needs the flag — it auto-detects and runs the same either way.
+#
+# althyn-power is never autostarted here — it's the shutdown/restart
+# menu, invoked on demand (keybind/menu item), not part of session startup.
+
+set -u
+
+# Display managers swallow this script's stdout/stderr, which makes any
+# crash invisible. Log everything to a file so a failed session can be
+# debugged after the fact (e.g. `tail -f ~/.local/state/althyn/session.log`
+# from another TTY while GDM is trying to start the session).
+LOG_DIR="$HOME/.local/state/althyn"
+mkdir -p "$LOG_DIR"
+exec >> "$LOG_DIR/session.log" 2>&1
+echo "---- althyn run: $(date '+%Y-%m-%d %H:%M:%S') args: $* ----"
+
+RUN_X11=0
+for arg in "$@"; do
+  case "$arg" in
+    --run-x11) RUN_X11=1 ;;
+    -h|--help)
+      echo "Usage: althyn [--run-x11]"
+      echo "  (no args)     Wayland session (althyn-core + swaybg)"
+      echo "  --run-x11     X11 compat session (openbox + feh + picom)"
+      exit 0
+      ;;
+  esac
+done
+
+WALLPAPER="/etc/VamoraSys/wallpapers/background.jpg"
+RUNNER_DIR="$HOME/.VamoraSys/althyn/runner"
+FIRST_RUN_MARKER="$RUNNER_DIR/first-run-done"
+mkdir -p "$RUNNER_DIR"
+
+FIRST_RUN=0
+[ -f "$FIRST_RUN_MARKER" ] || FIRST_RUN=1
+
+need() {
+  command -v "$1" >/dev/null 2>&1 || {
+    echo "althyn: '$1' not found on PATH — session cannot start."
+    exit 1
+  }
+}
+
+# Runs althyn-setup to completion before starting althyn-home on the
+# very first run (so the homescreen animation begins right after welcome
+# finishes); on later runs homescreen just starts immediately.
+# $1 = extra flag to pass to homescreen only (e.g. --run-x11), may be empty.
+start_homescreen() {
+  if [ "$FIRST_RUN" -eq 1 ]; then
+    ( althyn-setup && althyn-home ${1:+"$1"} ) &
+  else
+    althyn-home ${1:+"$1"} &
+  fi
+}
+
+if [ "$RUN_X11" -eq 1 ]; then
+  # ---- X11 session ----
+  need openbox-session
+  need feh
+  need picom
+  need althyn-setup
+  need althyn-bar
+  need althyn-home
+  need althyn-dock
+
+  export XDG_SESSION_TYPE=x11
+  export XDG_CURRENT_DESKTOP=Vamora
+
+  openbox-session &
+  WM_PID=$!
+  sleep 1
+  if ! kill -0 "$WM_PID" 2>/dev/null; then
+    echo "althyn: openbox-session exited immediately — check its output above."
+    exit 1
+  fi
+
+  feh --bg-fill "$WALLPAPER" &
+  picom &
+
+  start_homescreen --run-x11
+  althyn-bar --run-x11 &
+  althyn-dock --run-x11 &
+else
+  # ---- Wayland session ----
+  # Althyn's own compositor (compositor/, installed by install.sh as
+  # althyn-core). It takes a startup script (-s) that runs once it is ready.
+  COMPOSITOR=althyn-core
+  need "$COMPOSITOR"
+  need swaybg
+  need althyn-setup
+  need althyn-bar
+  need althyn-home
+  need althyn-dock
+
+  export XDG_SESSION_TYPE=wayland
+  export XDG_CURRENT_DESKTOP=Vamora
+
+  # The compositor only sets WAYLAND_DISPLAY inside its own process — clients we'd
+  # launch from this script wouldn't inherit it and would fail to connect.
+  # The compositor's -s/--startup runs a command once it (and its
+  # environment) is actually ready, so build that command as a small script
+  # and hand it to the compositor directly instead of racing to launch
+  # clients here.
+  STARTUP_SCRIPT="$RUNNER_DIR/wayland-startup.sh"
+  {
+    echo '#!/bin/sh'
+    echo "swaybg -i \"$WALLPAPER\" -m fill &"
+    if [ "$FIRST_RUN" -eq 1 ]; then
+      echo 'althyn-setup && althyn-home &'
+    else
+      echo 'althyn-home &'
+    fi
+    echo 'althyn-bar &'
+    echo 'althyn-dock &'
+  } > "$STARTUP_SCRIPT"
+  chmod +x "$STARTUP_SCRIPT"
+
+  "$COMPOSITOR" -s "$STARTUP_SCRIPT" &
+  WM_PID=$!
+  sleep 1
+  if ! kill -0 "$WM_PID" 2>/dev/null; then
+    echo "althyn: $COMPOSITOR exited immediately — check its output above."
+    exit 1
+  fi
+fi
+
+touch "$FIRST_RUN_MARKER"
+
+# Session ends when the WM exits
+wait "$WM_PID"

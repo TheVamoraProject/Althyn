@@ -1,11 +1,15 @@
+
 [workspace]
 resolver = "3"
 members = [
-    "Dock",
-    "HomeScreen",
-    "Launcher",
-    "PowerMenu",
-    "Settings",
-    "StatusBar",
-    "WelcomeScreen/Live",
+    "dock",
+    "home",
+    "launcher",
+    "power",
+    "settings",
+    "statusbar",
+    "setup/live",
 ]
+# Built separately (its own lockfile, optional `udev` feature), see
+# compositor/README.md and install.sh.
+exclude = ["compositor"]

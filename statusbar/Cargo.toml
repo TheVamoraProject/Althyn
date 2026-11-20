@@ -1,0 +1,20 @@
+[package]
+name = "althyn-bar"
+version = "0.5.0"
+edition = "2024"
+
+[dependencies]
+cxx = "1.0.197"
+cxx-qt = "0.9.1"
+cxx-qt-lib = { version = "0.9.1", features = ["qt_gui", "qt_qml"] }
+# X11-only for now (pre-alpha targets Openbox): used to reserve screen space
+# via EWMH struts so maximized windows don't sit under the status bar.
+x11rb = "0.13"
+# Wayland: window state (wlr-foreign-toplevel-management, see wltoplevel.rs) and
+# the wallpaper brightness under the bar (screen pixels can't be read there).
+wayland-client = "0.31"
+wayland-protocols-wlr = { version = "0.3", default-features = false, features = ["client"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+
+[build-dependencies]
+cxx-qt-build = "0.9.1"

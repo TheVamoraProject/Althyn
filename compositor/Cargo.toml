@@ -1,0 +1,42 @@
+[package]
+name = "althyn-core"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Althyn's Wayland compositor (Smithay)"
+
+# Built on its own (it pulls Smithay from git and needs the system graphics
+# libraries), so it is deliberately not a member of the Althyn workspace.
+[workspace]
+
+[dependencies]
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+bitflags = "2.2.1"
+# wlr-foreign-toplevel-management server (src/foreign_toplevel.rs)
+wayland-protocols-wlr = { version = "0.3", default-features = false, features = ["server"] }
+# Only used by the udev backend (see `udev` feature).
+xcursor = { version = "0.3.3", optional = true }
+smithay-drm-extras = { git = "https://github.com/Smithay/smithay", rev = "65aa86fa5236e41775c313408102a5d5c2d1e2ca", default-features = false, optional = true }
+
+[features]
+default = []
+# Real hardware: DRM/KMS + libinput + libseat (see src/backend/udev.rs).
+udev = [
+    "dep:xcursor",
+    "dep:smithay-drm-extras",
+    "smithay/backend_drm",
+    "smithay/backend_gbm",
+    "smithay/backend_udev",
+    "smithay/backend_libinput",
+    "smithay/backend_session_libseat",
+    "smithay/backend_egl",
+    "smithay/renderer_gl",
+    "smithay/renderer_multi",
+]
+
+[dependencies.smithay]
+git = "https://github.com/Smithay/smithay"
+rev = "65aa86fa5236e41775c313408102a5d5c2d1e2ca"
+default-features = false
+features = ["backend_winit", "backend_drm", "wayland_frontend", "desktop"]
