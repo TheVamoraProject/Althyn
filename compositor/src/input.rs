@@ -214,6 +214,21 @@ impl State {
         let serial = SERIAL_COUNTER.next_serial();
         let button_state = event.state();
 
+        // Compositor titlebar: buttons, drag to move.
+        if button_state == ButtonState::Pressed
+            && !pointer.is_grabbed()
+            && event.button_code() == 0x110
+            && !self.focus_exclusive_layer()
+        {
+            let pos = pointer.current_location();
+            if let crate::shell::WindowHit::Titlebar(window, part) = self.window_hit(pos)
+                && self.surface_under(pos).is_none()
+            {
+                self.titlebar_press(window, part, pos, serial);
+                return;
+            }
+        }
+
         // Click to focus. While a grab is active (popup menu, drag, move or
         // resize) the grab decides what happens.
         if button_state == ButtonState::Pressed && !pointer.is_grabbed() {

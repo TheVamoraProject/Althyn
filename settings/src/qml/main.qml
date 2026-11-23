@@ -21,7 +21,19 @@ ApplicationWindow {
 
     readonly property bool isMobile: width < 700
     readonly property int chromeHeight: 46
+    // Qt does not always report Maximized (e.g. under Wayland when the
+    // compositor, not this window, changed the state), so a window that fills
+    // the screen's width and nearly all of its height counts as maximized too.
     readonly property bool windowIsMaximized: visibility === Window.Maximized
+        || visibility === Window.FullScreen
+        || (Screen.width > 0 && width >= Screen.width - 2 && height >= Screen.height * 0.9)
+    // Window corner radius follows VamoraSys `wm.corner_radius` (0-32); square
+    // when maximized.
+    property int wmCornerRadius: {
+        var value = parseInt(SysInfo.getSetting("wm.corner_radius"))
+        return isNaN(value) ? 12 : Math.max(0, Math.min(32, value))
+    }
+    readonly property int windowRadius: windowIsMaximized ? 0 : wmCornerRadius
     readonly property int resizeMargin: 7
     font.family: "Inter, Segoe UI, system-ui, sans-serif"
 
@@ -55,7 +67,7 @@ ApplicationWindow {
     }
 
     background: Rectangle {
-        radius: root.windowIsMaximized ? 0 : 18
+        radius: root.windowRadius
         color: root.bgPrimary
         border.color: root.borderColor
         border.width: root.windowIsMaximized ? 0 : 1
@@ -92,14 +104,14 @@ ApplicationWindow {
         z: 100
         anchors { top: parent.top; left: parent.left; right: parent.right }
         height: root.chromeHeight
-        radius: root.windowIsMaximized ? 0 : 18
+        radius: root.windowRadius
         color: root.bgPrimary
         border.color: root.bgPrimary
         border.width: 0
 
         Rectangle {
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-            height: 18
+            height: Math.max(root.wmCornerRadius, 1)
             color: parent.color
         }
 

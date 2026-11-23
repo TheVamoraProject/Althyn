@@ -11,6 +11,8 @@
 //! | `wm.animations`      | `true` / `false`  | true    |
 //! | `wm.transparency`    | `true` / `false`  | false   |
 //! | `wm.window_effects`  | `true` / `false`  | true    |
+//! | `wm.corner_radius`   | 0-32 (px)         | 12      |
+//! | `appearance.theme`   | `dark` = dark window frame | light |
 //! | `keyboard.layout`    | xkb layout        | us      |
 //! | `keyboard.layouts`   | comma separated   | us      |
 //! | `keyboard.model`     | xkb model         | pc105   |
@@ -60,12 +62,16 @@ pub struct KeyboardConfig {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Config {
     pub focus_mode: FocusMode,
-    /// Stored for the render path; no animations exist in the base yet.
+    /// Window open animation.
     pub animations: bool,
     /// Stored for the render path; no transparency effects in the base yet.
     pub transparency: bool,
     /// Stored for the render path; no window effects in the base yet.
     pub window_effects: bool,
+    /// `wm.corner_radius` (0-32): rounding for windows that do not draw their own frame.
+    pub corner_radius: u32,
+    /// `appearance.theme == "dark"`: the window frame turns dark.
+    pub dark_theme: bool,
     pub keyboard: KeyboardConfig,
 }
 
@@ -76,6 +82,8 @@ impl Default for Config {
             animations: true,
             transparency: false,
             window_effects: true,
+            corner_radius: 12,
+            dark_theme: false,
             keyboard: KeyboardConfig {
                 layouts: "us".into(),
                 model: "pc105".into(),
@@ -156,6 +164,10 @@ impl Config {
             animations: parse_bool(get_setting("wm.animations"), d.animations),
             transparency: parse_bool(get_setting("wm.transparency"), d.transparency),
             window_effects: parse_bool(get_setting("wm.window_effects"), d.window_effects),
+            corner_radius: get_setting("wm.corner_radius")
+                .and_then(|v| v.parse::<u32>().ok())
+                .map_or(d.corner_radius, |v| v.min(32)),
+            dark_theme: get_setting("appearance.theme").is_some_and(|t| t.eq_ignore_ascii_case("dark")),
             keyboard: KeyboardConfig {
                 layouts,
                 model: get_setting("keyboard.model").unwrap_or(d.keyboard.model),

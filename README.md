@@ -25,9 +25,37 @@ cargo build --workspace --release
 Build or run one component with its package name:
 
 ```bash
-cargo build -p vamora-statusbar
-cargo run -p vamora-launcher
+cargo build -p althyn-bar
+cargo run -p althyn-launcher
 ```
 
-The workspace contains the packages in `Dock`, `HomeScreen`, `Launcher`,
-`PowerMenu`, `Settings`, `StatusBar`, and `WelcomeScreen/Live`.
+The workspace contains the packages in `dock`, `home`, `launcher`, `power`,
+`settings`, `statusbar`, and `setup/live`. The compositor (`compositor/`) is
+its own Cargo project with a separate lockfile; `install.sh` builds it too.
+
+## Layout and executables
+
+| Directory | Package / executable |
+|---|---|
+| `compositor/` | `althyn-core` |
+| `dock/` | `althyn-dock` |
+| `home/` | `althyn-home` |
+| `launcher/` | `althyn-launcher` |
+| `power/` | `althyn-power` |
+| `runner/` | `althyn` (session launcher script) |
+| `settings/` | `vamora-settings` |
+| `statusbar/` | `althyn-bar` |
+| `setup/live/` | `althyn-setup` |
+| `branding/` | wallpapers and other branding assets |
+| `scripts/` | helper scripts (`build-layer-shell-qt.sh`) |
+
+## Install
+
+```bash
+./install.sh            # build + install to /usr/local/bin (uses sudo)
+./install.sh --chroot DIR   # stage into a live-build project instead
+```
+
+Then pick "Vamora Althyn" (Wayland, runs `althyn-core`) or
+"Vamora Althyn (X11)" in the session menu. Runtime needs: `vamorasys`,
+`swaybg` (Wayland wallpaper), and `openbox`, `feh`, `picom` (X11 session).

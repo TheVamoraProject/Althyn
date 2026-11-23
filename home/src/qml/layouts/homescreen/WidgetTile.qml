@@ -40,7 +40,9 @@ Item {
             anchors.horizontalCenter: parent.horizontalCenter
 
             function radiusFor(size) {
-                return Math.min(tile.iconCornerRadiusRaw, 32) / 32 * (size / 2)
+                var r = Math.min(tile.iconCornerRadiusRaw, 32) / 32 * (size / 2)
+                // A full circle suits an icon but not a big card: cap large widgets.
+                return size > 64 ? Math.min(r, 28) : r
             }
 
             // The widget's actual rendered content — this, not some icon
@@ -88,6 +90,9 @@ Item {
             font.family: "Inter"
             font.pixelSize: 12
             font.weight: Font.Medium
+            // Keeps labels readable on busy wallpapers.
+            style: Text.Outline
+            styleColor: "#b3000000"
             width: tile.width
             horizontalAlignment: Text.AlignHCenter
             elide: Text.ElideRight

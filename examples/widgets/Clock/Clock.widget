@@ -1,0 +1,17 @@
+[Widget]
+Name=Clock
+Id=com.vamora.clock
+Package=Clock
+Vamify=true
+
+[UI]
+Type=QML
+Source=Clock.qml
+
+[Size]
+Width=2
+Height=2
+MinWidth=1
+MinHeight=1
+MaxWidth=4
+MaxHeight=4

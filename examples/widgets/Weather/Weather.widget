@@ -1,0 +1,17 @@
+[Widget]
+Name=Weather
+Id=com.vamora.weather
+Package=Weather
+Vamify=true
+
+[UI]
+Type=QML
+Source=Weather.qml
+
+[Size]
+Width=2
+Height=1
+MinWidth=1
+MinHeight=1
+MaxWidth=4
+MaxHeight=4

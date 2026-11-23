@@ -204,6 +204,128 @@ Window {
         }
         persist()
     }
+    // ---- Drag and drop (see HomePage.qml) ----
+    // Does `a` stand for the same icon as `b`?
+    function sameItem(a, b) {
+        if (a.type !== b.type) return false
+        if (a.type === "app") return a.id === b.id
+        if (a.type === "widget") return a.package === b.package
+        return a.path === b.path
+    }
+    // The free spot for a w×h box that is closest to (col,row), or null.
+    function nearestFree(pageItems, col, row, w, h, ignore) {
+        var others = pageItems.filter(function(i) { return i !== ignore })
+        var best = null, bestDist = 1e9
+        for (var y = 0; y <= gridRows - h; y++) for (var x = 0; x <= gridCols - w; x++) {
+            if (!canPlaceOnPage(others, x, y, w, h)) continue
+            var d = (x - col) * (x - col) + (y - row) * (y - row)
+            if (d < bestDist) { bestDist = d; best = {x: x, y: y} }
+        }
+        return best
+    }
+    function findItem(probe) {
+        for (var p = 0; p < pagesModel.length; p++)
+            for (var i = 0; i < pagesModel[p].length; i++)
+                if (sameItem(pagesModel[p][i], probe)) return {page: p, index: i}
+        return null
+    }
+    // A drop of one of our own icons is applied once its drag has finished
+    // (afterDrag), so the icon being dragged is not rebuilt underneath the drag.
+    property var pendingInternalDrop: null
+    function handleDrop(pageIndex, info) {
+        if (info.internal) { pendingInternalDrop = info; return }
+        dropExternal(pageIndex, info)
+    }
+    function applyInternalDrop(info) {
+        var found = findItem(info.internal)
+        if (!found) return
+        var item = pagesModel[found.page][found.index]
+        var w = item.width || 1, h = item.height || 1
+        // Same rule as before the native drag: dropped well past a page edge
+        // after a real drag moves it to the neighbouring page.
+        var left = info.px - info.internal.gx, top = info.py - info.internal.gy
+        var dist = Math.abs(left - info.internal.left) + Math.abs(top - info.internal.top)
+        var nearLeft = left <= info.edgeZone
+        var nearRight = left + w * info.cellW >= info.pageWidth - info.edgeZone
+        if (dist >= info.dragThreshold && (nearLeft || nearRight)) { moveItemAcrossPages(item, nearLeft ? -1 : 1, found.page); return }
+        var spot = nearestFree(pagesModel[found.page], info.col, info.row, w, h, item)
+        if (!spot) return
+        item.x = spot.x; item.y = spot.y
+        updateItemPosition(found.page, item)
+    }
+    // Files from outside: apps/widgets are moved or copied into ~/Desktop, folders
+    // are pinned by reference; each lands on the cell it was dropped on (or the
+    // closest free one).
+    function dropExternal(pageIndex, info) {
+        if (!info.urls.length) return
+        var results = JSON.parse(String(appList.importDropped(info.urls.join("\n"), info.move)))
+        if (!results.length) return
+        apps = JSON.parse(appList.getAppsJson())
+        availableWidgets = JSON.parse(appList.getWidgetsJson())
+        var model = pagesModel.map(function(pg) { return pg.slice() })
+        var col = info.col, row = info.row
+        for (var r = 0; r < results.length; r++) {
+            var res = results[r], item = null, w = 1, h = 1
+            if (res.kind === "app") item = {type: "app", id: res.id}
+            else if (res.kind === "folder") item = {type: "folder", name: res.name, path: res.path}
+            else if (res.kind === "widget") {
+                var wd = availableWidgets.find(function(x) { return x.package === res.package })
+                if (!wd) continue
+                item = {type: "widget", package: wd.package, name: wd.name}; w = wd.width; h = wd.height
+            }
+            if (!item) continue
+            // Already on the homescreen: this drop moves it to the new spot.
+            for (var p = 0; p < model.length; p++) model[p] = model[p].filter(function(it) { return !sameItem(it, item) })
+            var target = pageIndex, spot = nearestFree(model[pageIndex] || [], col, row, w, h, null)
+            if (!spot) {
+                var fs = findFreeSpot(model, w, h)
+                if (!fs) continue
+                target = fs.page; spot = {x: fs.x, y: fs.y}
+            }
+            item.x = spot.x; item.y = spot.y; item.width = w; item.height = h; item.page = target
+            model[target].push(item)
+            col = spot.x; row = spot.y
+        }
+        pagesModel = model
+        persist()
+        buildPages()
+    }
+    // Called when a drag that started on one of our icons ends. A Move means the
+    // file left (Dock, file manager): rebuild now instead of waiting for refresh().
+    function afterDrag(item, dropAction) {
+        var pending = pendingInternalDrop; pendingInternalDrop = null
+        if (pending) { applyInternalDrop(pending); return }
+        // The source can be told "ignored" even though another client took the
+        // file, so whether it left is decided by rescanning, not by dropAction.
+        if (item.type !== "folder") { rescanItem = item; rescanTimer.restart() }
+    }
+    // Shortly after a drop, check whether the file left (moved to the Dock or a
+    // file manager); if so drop the icon now instead of waiting for refresh().
+    property var rescanItem: null
+    Timer {
+        id: rescanTimer
+        interval: 400
+        onTriggered: {
+            var item = window.rescanItem; window.rescanItem = null
+            if (!item) return
+            var fresh = JSON.parse(appList.getAppsJson())
+            var widgets = JSON.parse(appList.getWidgetsJson())
+            var gone = item.type === "app" ? !fresh.some(function(a) { return a.id === item.id })
+                                           : !widgets.some(function(w) { return w.package === item.package })
+            if (!gone) return
+            window.apps = fresh
+            window.availableWidgets = widgets
+            window.pagesModel = window.pagesModel.map(function(pg) { return pg.filter(function(it) { return !window.sameItem(it, item) }) })
+            window.persist(); window.buildPages()
+        }
+    }
+    function removeItem(item) {
+        if (item.type === "app") appList.removeApp(item.desktopPath || "")
+        var model = pagesModel.map(function(pg) { return pg.filter(function(it) { return !sameItem(it, item) }) })
+        pagesModel = model
+        persist()
+        if (item.type === "app") refresh()
+    }
     function refresh(){
         var freshApps=JSON.parse(appList.getAppsJson());
         // Guard against a transient/incomplete app scan wiping the homescreen:
@@ -248,7 +370,7 @@ Window {
     Row { id: indicatorRow; anchors.top:parent.top; anchors.topMargin:48; anchors.horizontalCenter:parent.horizontalCenter; spacing:8; z:10
         Repeater { model: window.pagesModel.length; Rectangle { readonly property bool active:index===pagesView.currentIndex; width:active?22:7;height:7;radius:3.5;color:active?cDotActive:cDotInactive; MouseArea{anchors.fill:parent;anchors.margins:-6;onClicked:pagesView.currentIndex=index} } }
     }
-    SwipeView { id:pagesView; anchors.top:indicatorRow.bottom; anchors.topMargin:24; anchors.bottom:parent.bottom; anchors.left:parent.left; anchors.right:parent.right; anchors.bottomMargin:24; clip:true; Repeater { model:window.pagesModel.length; HomePage { items:window.pagesModel[index]||[]; cols:gridCols; rows:gridRows; textColor:cText; hoverColor:cHover; iconCornerRadiusRaw:window.iconCornerRadiusRaw; availableWidgets:window.availableWidgets; animateEntrance:window.firstLoad; resizingItem:window.resizingItem; onLaunch:function(e){appList.launchApp(e)}; onItemChanged:function(item){window.updateItemPosition(index,item)}; onAppRightClicked:function(x,y,item){appContextMenu.targetItem=item;appContextMenu.targetDesktopPath=item.desktopPath||"";appContextMenu.targetAppName=item.appName||item.name||"";appContextMenu.popup(x,y)}; onBgRightClicked:function(x,y){bgContextMenu.popup(x,y)}; onRequestPageShift:function(item,direction){window.moveItemAcrossPages(item,direction,index)}; onEndResizeItem:window.endResize() } } }
-    VamoraContextMenu { id:appContextMenu; hostWindow:window; property string targetDesktopPath:""; property string targetAppName:""; property var targetItem:null; model:[{label:"Resize",icon:"../../assets/icons/apps.svg",action:function(){window.beginResize(targetItem)}},{label:"---"},{label:"Remove from Homescreen",icon:"../../assets/icons/pin-off.svg",destructive:true,action:function(){appList.removeApp(targetDesktopPath);refresh()}},{label:"---"},{label:"App Info",icon:"../../assets/icons/info.svg"}] }
+    SwipeView { id:pagesView; anchors.top:indicatorRow.bottom; anchors.topMargin:24; anchors.bottom:parent.bottom; anchors.left:parent.left; anchors.right:parent.right; anchors.bottomMargin:24; clip:true; Repeater { model:window.pagesModel.length; HomePage { items:window.pagesModel[index]||[]; cols:gridCols; rows:gridRows; textColor:cText; hoverColor:cHover; iconCornerRadiusRaw:window.iconCornerRadiusRaw; availableWidgets:window.availableWidgets; animateEntrance:window.firstLoad; resizingItem:window.resizingItem; onLaunch:function(e){appList.launchApp(e)}; onItemChanged:function(item){window.updateItemPosition(index,item)}; onAppRightClicked:function(x,y,item){appContextMenu.targetItem=item;appContextMenu.targetDesktopPath=item.desktopPath||"";appContextMenu.targetAppName=item.appName||item.name||"";appContextMenu.popup(x,y)}; onBgRightClicked:function(x,y){bgContextMenu.popup(x,y)}; onRequestPageShift:function(item,direction){window.moveItemAcrossPages(item,direction,index)}; onEndResizeItem:window.endResize(); pageIndex:index; onDropped:function(info){window.handleDrop(index,info)}; onDragFinished:function(item,action){window.afterDrag(item,action)}; onOpenFolder:function(p){appList.openPath(p)} } } }
+    VamoraContextMenu { id:appContextMenu; hostWindow:window; property string targetDesktopPath:""; property string targetAppName:""; property var targetItem:null; model:[{label:"Resize",icon:"../../assets/icons/apps.svg",action:function(){window.beginResize(targetItem)}},{label:"---"},{label:"Remove from Homescreen",icon:"../../assets/icons/pin-off.svg",destructive:true,action:function(){window.removeItem(targetItem)}},{label:"---"},{label:"App Info",icon:"../../assets/icons/info.svg"}] }
     VamoraContextMenu { id:bgContextMenu; hostWindow:window; model:[{label:"Add Page",icon:"../../assets/icons/apps.svg",action:function(){addPage()}},{label:"Remove Current Page",icon:"../../assets/icons/pin-off.svg",destructive:true,action:function(){removePage()}},{label:"Add Widget",icon:"../../assets/icons/apps.svg"},{label:"Homescreen Settings",icon:"../../assets/icons/info.svg"},{label:"Refresh",icon:"../../assets/icons/info.svg",action:function(){refresh()}},{label:"---"},{label:"Power",icon:"../../assets/icons/power.svg",destructive:true,action:function(){appList.launchApp("althyn-power")}}] }
 }

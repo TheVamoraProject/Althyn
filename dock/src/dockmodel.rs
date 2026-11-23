@@ -42,6 +42,14 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "getIconCornerRadius"]
         fn get_icon_corner_radius(self: &DockModel) -> QString;
+
+        /// Pins dropped `.desktop` files (newline-separated file URIs):
+        /// moved into the dock's contents directory when `move_files`
+        /// (the drag came from the homescreen or a Move drop), copied
+        /// otherwise. Returns how many entries were handled.
+        #[qinvokable]
+        #[cxx_name = "addDropped"]
+        fn add_dropped(self: &DockModel, uris: &QString, move_files: bool) -> i32;
     }
 }
 
@@ -115,6 +123,31 @@ impl qobject::DockModel {
         }
     }
 
+    pub fn add_dropped(&self, uris: &QString, move_files: bool) -> i32 {
+        let Some(dir) = dock_contents_dir() else { return 0 };
+        if std::fs::create_dir_all(&dir).is_err() { return 0 }
+        let mut handled = 0;
+        for uri in format!("{}", uris).lines() {
+            let Some(src) = uri_to_path(uri) else { continue };
+            if src.extension().and_then(|x| x.to_str()) != Some("desktop") { continue }
+            let Some(new_app) = parse_desktop_file(&src) else { continue };
+            if src.parent() == Some(dir.as_path()) { continue } // already pinned
+            // Same app already pinned under this name: nothing to add, but a
+            // move still takes the dropped file away from where it was.
+            let same_name = src.file_name().map(|n| dir.join(n));
+            if let Some(existing) = same_name.as_ref().filter(|p| p.exists()) {
+                if parse_desktop_file(existing).is_some_and(|a| a.exec == new_app.exec) {
+                    if move_files { let _ = std::fs::remove_file(&src); }
+                    handled += 1;
+                    continue;
+                }
+            }
+            let Some(name) = src.file_name() else { continue };
+            if move_or_copy(&src, &unique_dest(&dir, name), move_files) { handled += 1; }
+        }
+        handled
+    }
+
     pub fn get_icon_corner_radius(&self) -> QString {
         let radius = Command::new("vamorasys")
             .args(["settings", "get", "icons.corner_radius"])
@@ -126,6 +159,62 @@ impl qobject::DockModel {
             .filter(|v| v.is_finite() && *v >= 0.0)
             .unwrap_or(8.0);
         QString::from(radius.to_string().as_str())
+    }
+}
+
+
+/// `file:///a%20b` (or a plain absolute path) -> `/a b`.
+fn uri_to_path(uri: &str) -> Option<PathBuf> {
+    use std::os::unix::ffi::OsStringExt;
+    let u = uri.trim();
+    let rest = if let Some(r) = u.strip_prefix("file://") {
+        r.strip_prefix("localhost").unwrap_or(r)
+    } else if u.starts_with('/') {
+        u
+    } else {
+        return None;
+    };
+    let b = rest.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' && i + 2 < b.len() && b[i + 1].is_ascii_hexdigit() && b[i + 2].is_ascii_hexdigit() {
+            out.push(u8::from_str_radix(std::str::from_utf8(&b[i + 1..i + 3]).ok()?, 16).ok()?);
+            i += 3;
+        } else {
+            out.push(b[i]);
+            i += 1;
+        }
+    }
+    if out.first() != Some(&b'/') { return None }
+    Some(PathBuf::from(std::ffi::OsString::from_vec(out)))
+}
+
+/// `dir/name`, or `dir/stem-N.ext` when that name is taken.
+fn unique_dest(dir: &Path, name: &std::ffi::OsStr) -> PathBuf {
+    let first = dir.join(name);
+    if !first.exists() { return first }
+    let p = Path::new(name);
+    let stem = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let ext = p.extension().map(|s| format!(".{}", s.to_string_lossy())).unwrap_or_default();
+    for n in 1..1000 {
+        let c = dir.join(format!("{stem}-{n}{ext}"));
+        if !c.exists() { return c }
+    }
+    first
+}
+
+/// Moves (rename, falling back to copy + delete across filesystems) or copies.
+fn move_or_copy(src: &Path, dest: &Path, move_files: bool) -> bool {
+    if move_files {
+        if std::fs::rename(src, dest).is_ok() { return true }
+        if std::fs::copy(src, dest).is_ok() {
+            let _ = std::fs::remove_file(src); // may not be allowed (system file): the copy still counts
+            return true;
+        }
+        false
+    } else {
+        std::fs::copy(src, dest).is_ok()
     }
 }
 
@@ -177,9 +266,11 @@ fn parse_desktop_file(path: &Path) -> Option<App> {
         else if let Some(v) = line.strip_prefix("X-GNOME-WMClass=") { if startup_wm_class.is_empty() { startup_wm_class = v.trim().to_string() } }
     }
     if typ != "Application" || hidden || name.is_empty() || exec.is_empty() { return None }
+    let icon_path = resolve_icon(&icon);
+    let direct_round = direct_round || pack_is_vamora(&icon_path);
     Some(App {
         name,
-        icon_path: resolve_icon(&icon),
+        icon_path,
         exec: clean_exec(&exec),
         direct_round,
         bg_color,
@@ -222,15 +313,40 @@ fn command_binary(exec: &str) -> String {
 fn resolve_icon(icon: &str) -> String {
     if icon.is_empty() { return String::new() }
     if icon.starts_with('/') && Path::new(icon).exists() { return format!("file://{icon}") }
-    for p in [
-        format!("/usr/share/icons/hicolor/48x48/apps/{icon}.png"),
-        format!("/usr/share/icons/hicolor/scalable/apps/{icon}.svg"),
-        format!("/usr/share/pixmaps/{icon}.png"),
-        format!("/usr/share/pixmaps/{icon}.svg"),
-    ] {
-        if Path::new(&p).exists() { return format!("file://{p}") }
+    find_themed_icon(icon).map(|p| format!("file://{p}")).unwrap_or_default()
+}
+
+/// Icon pack chosen in settings (`icons.theme`); falls back to hicolor when unset
+/// or unknown to VamoraSys.
+fn icon_theme() -> String {
+    std::process::Command::new("vamorasys").args(["settings", "get", "icons.theme"]).output().ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty() && !s.contains('/') && !s.contains(".."))
+        .unwrap_or_else(|| "hicolor".to_string())
+}
+
+/// Look `icon` up in the chosen icon pack first, then hicolor, then pixmaps.
+fn find_themed_icon(icon: &str) -> Option<String> {
+    use std::path::Path;
+    if icon.is_empty() || icon.contains('/') || icon.contains("..") { return None }
+    let theme = icon_theme();
+    let mut themes = vec![theme.clone()];
+    if theme != "hicolor" { themes.push("hicolor".to_string()) }
+    for t in &themes {
+        let base = format!("/usr/share/icons/{t}");
+        for sub in ["scalable/apps", "64x64/apps", "48x48/apps", "128x128/apps", "256x256/apps", "apps/scalable", "apps/64", "apps/48", "32/apps", "24/apps", "22/apps", "16/apps"] {
+            for ext in ["svg", "png"] {
+                let p = format!("{base}/{sub}/{icon}.{ext}");
+                if Path::new(&p).exists() { return Some(p) }
+            }
+        }
     }
-    String::new()
+    for p in [format!("/usr/share/pixmaps/{icon}.png"), format!("/usr/share/pixmaps/{icon}.svg")] {
+        if Path::new(&p).exists() { return Some(p) }
+    }
+    None
 }
 
 fn json_escape(s: &str) -> String {
@@ -255,4 +371,29 @@ mod tests {
     use super::*;
     #[test] fn exec_codes_removed() { assert_eq!(clean_exec("foo %U --bar"), "foo --bar"); }
     #[test] fn fallback_is_direct_round() { assert!(fallback_settings_app().direct_round); }
+    #[test] fn uri_decodes() {
+        assert_eq!(uri_to_path("file:///home/a%20b/x.desktop"), Some(PathBuf::from("/home/a b/x.desktop")));
+        assert_eq!(uri_to_path("/plain/path"), Some(PathBuf::from("/plain/path")));
+        assert_eq!(uri_to_path("https://x"), None);
+    }
+    #[test] fn unique_names() {
+        let d = std::env::temp_dir().join(format!("althyn-dock-test-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("a.desktop"), "x").unwrap();
+        assert_eq!(unique_dest(&d, std::ffi::OsStr::new("a.desktop")), d.join("a-1.desktop"));
+        assert_eq!(unique_dest(&d, std::ffi::OsStr::new("b.desktop")), d.join("b.desktop"));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+}
+
+/// An icon pack opts in with `VamoraPackage=true` in its index.theme: its icons
+/// are full-bleed and drawn like Vamora icons (rounded by the corner-radius
+/// setting, no backing tile). Icons from other packs keep the tile.
+fn pack_is_vamora(icon_url: &str) -> bool {
+    let path = icon_url.strip_prefix("file://").unwrap_or(icon_url);
+    let Some(rest) = path.strip_prefix("/usr/share/icons/") else { return false };
+    let Some(theme) = rest.split('/').next() else { return false };
+    std::fs::read_to_string(format!("/usr/share/icons/{theme}/index.theme")).map(|s| {
+        s.lines().any(|l| { let l = l.trim(); l.eq_ignore_ascii_case("VamoraPackage=true") })
+    }).unwrap_or(false)
 }

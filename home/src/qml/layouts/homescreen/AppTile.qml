@@ -125,6 +125,9 @@ Item {
             font.family: "Inter"
             font.pixelSize: 12
             font.weight: Font.Medium
+            // Keeps labels readable on busy wallpapers.
+            style: Text.Outline
+            styleColor: "#b3000000"
             width: tile.width
             horizontalAlignment: Text.AlignHCenter
             elide: Text.ElideRight

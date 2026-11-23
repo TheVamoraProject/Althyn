@@ -97,7 +97,7 @@ render_elements! {
     pub OutputElement<=GlesRenderer>;
     Cursor=MemoryRenderBufferRenderElement<GlesRenderer>,
     Surface=WaylandSurfaceRenderElement<GlesRenderer>,
-    Space=SpaceRenderElements<GlesRenderer, WaylandSurfaceRenderElement<GlesRenderer>>,
+    Scene=crate::render::SceneElement,
 }
 
 /// One lit connector.
@@ -725,6 +725,8 @@ impl State {
                 backend,
                 space,
                 cursor_status,
+                dnd_icon,
+                config,
                 ..
             } = self;
             let Backend::Udev(data) = backend else { return };
@@ -800,12 +802,38 @@ impl State {
                 }
             }
 
-            match space_render_elements::<_, Window, _>(renderer, [&*space], &output, 1.0) {
-                Ok(space_elements) => {
-                    elements.extend(space_elements.into_iter().map(OutputElement::Space));
+            // A drag icon sits under the pointer, above every window.
+            if let Some(icon) = dnd_icon.as_ref().filter(|icon| icon.surface.alive()) {
+                if output_geo.to_f64().contains(pointer_location) {
+                    let relative = pointer_location - output_geo.loc.to_f64();
+                    let location = (relative + icon.effective_offset().to_f64())
+                        .to_physical(scale)
+                        .to_i32_round();
+                    elements.extend(
+                        render_elements_from_surface_tree::<
+                            _,
+                            WaylandSurfaceRenderElement<GlesRenderer>,
+                        >(
+                            renderer, &icon.surface, location, scale, 1.0, Kind::Unspecified
+                        )
+                        .into_iter()
+                        .map(OutputElement::Surface),
+                    );
                 }
-                Err(err) => warn!("could not collect the scene: {err:?}"),
             }
+
+            elements.extend(
+                crate::render::scene_elements(
+                    renderer,
+                    space,
+                    &output,
+                    config.corner_radius,
+                    config.animations,
+                    config.dark_theme,
+                )
+                .into_iter()
+                .map(OutputElement::Scene),
+            );
 
             let rendered = match surface.compositor.render_frame(
                 renderer,

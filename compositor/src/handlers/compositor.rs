@@ -7,8 +7,8 @@ use smithay::{
     wayland::{
         buffer::BufferHandler,
         compositor::{
-            CompositorClientState, CompositorHandler, CompositorState, get_parent,
-            is_sync_subsurface,
+            CompositorClientState, CompositorHandler, CompositorState, SurfaceAttributes, get_parent,
+            is_sync_subsurface, with_states,
         },
         shm::{ShmHandler, ShmState},
     },
@@ -42,6 +42,23 @@ impl CompositorHandler for State {
             if let Some(window) = self.window_for_surface(&root) {
                 window.on_commit();
             }
+        }
+
+        // Drag icon: the client moves it with attach offsets; keep its origin
+        // relative to the pointer.
+        if matches!(&self.dnd_icon, Some(icon) if &icon.surface == surface) {
+            let icon = self.dnd_icon.as_mut().unwrap();
+            with_states(&icon.surface, |states| {
+                let delta = states
+                    .cached_state
+                    .get::<SurfaceAttributes>()
+                    .current()
+                    .buffer_delta
+                    .take()
+                    .unwrap_or_default();
+                icon.offset += delta;
+                if delta != Default::default() { icon.placed = true; }
+            });
         }
 
         // xdg toplevels / popups: initial configure and first placement.

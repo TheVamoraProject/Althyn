@@ -41,6 +41,7 @@
         <file>assets/icons/restore.svg</file>
         <file>assets/icons/battery/battery-charging.svg</file>
         <file>assets/icons/battery/battery-full.svg</file>
+        <file>assets/icons/battery/bolt.svg</file>
         <file>assets/icons/battery/battery-low.svg</file>
         <file>assets/icons/battery/battery-medium.svg</file>
         <file>assets/icons/battery/battery-warning.svg</file>
@@ -52,6 +53,7 @@
         <file>assets/icons/volume-1.svg</file>
         <file>assets/icons/volume-2.svg</file>
         <file>assets/icons/volume-x.svg</file>
+        <file>assets/icons/bluetooth.svg</file>
         <file>assets/icons/wifi/wifi-high.svg</file>
         <file>assets/icons/wifi/wifi-low.svg</file>
         <file>assets/icons/wifi/wifi-off.svg</file>

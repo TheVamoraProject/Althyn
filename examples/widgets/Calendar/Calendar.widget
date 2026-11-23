@@ -1,0 +1,17 @@
+[Widget]
+Name=Calendar
+Id=com.vamora.calendar
+Package=Calendar
+Vamify=true
+
+[UI]
+Type=QML
+Source=Calendar.qml
+
+[Size]
+Width=2
+Height=2
+MinWidth=1
+MinHeight=1
+MaxWidth=4
+MaxHeight=4

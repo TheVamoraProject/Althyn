@@ -239,9 +239,11 @@ fn parse_desktop_file(path: &Path) -> Option<App> {
         return None;
     }
 
+    let icon_path = resolve_icon(&icon);
+    let direct_round = direct_round || pack_is_vamora(&icon_path);
     Some(App {
         name,
-        icon_path: resolve_icon(&icon),
+        icon_path,
         exec: remove_field_codes(&exec),
         terminal,
         direct_round,
@@ -331,18 +333,18 @@ fn resolve_icon(icon: &str) -> String {
         PathBuf::from("/usr/share/pixmaps"),
     ]);
 
-    let icon_names = if Path::new(icon).extension().is_some() {
+    let icon_names = if Path::new(icon).extension().and_then(|e| e.to_str()).map(|e| matches!(e.to_ascii_lowercase().as_str(), "png" | "svg" | "xpm")).unwrap_or(false) {
         vec![icon.to_string()]
     } else {
         vec![format!("{icon}.png"), format!("{icon}.svg"), format!("{icon}.xpm")]
     };
 
-    let icon_sizes = ["48x48", "64x64", "128x128", "256x256", "scalable"];
+    let icon_sizes = ["48x48", "64x64", "128x128", "256x256", "scalable", "48", "32", "22", "16"];
     for base in candidates {
-        for theme in ["hicolor", "Adwaita"] {
+        for theme in icon_theme_list() {
             for size in icon_sizes {
                 for icon_name in &icon_names {
-                    let candidate = base.join(theme).join(size).join("apps").join(icon_name);
+                    let candidate = base.join(&theme).join(size).join("apps").join(icon_name);
                     if candidate.exists() {
                         return file_url(&candidate);
                     }
@@ -550,4 +552,34 @@ fn commands_to_json(commands: &[CommandResult]) -> String {
     }
     output.push(']');
     output
+}
+/// Icon pack chosen in settings (`icons.theme`); falls back to hicolor when unset
+/// or unknown to VamoraSys.
+fn icon_theme() -> String {
+    std::process::Command::new("vamorasys").args(["settings", "get", "icons.theme"]).output().ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty() && !s.contains('/') && !s.contains(".."))
+        .unwrap_or_else(|| "hicolor".to_string())
+}
+
+
+fn icon_theme_list() -> Vec<String> {
+    let t = icon_theme();
+    let mut v = vec![t.clone()];
+    for fallback in ["hicolor", "Adwaita"] { if t != fallback { v.push(fallback.to_string()) } }
+    v
+}
+
+/// An icon pack opts in with `VamoraPackage=true` in its index.theme: its icons
+/// are full-bleed and drawn like Vamora icons (rounded by the corner-radius
+/// setting, no backing tile). Icons from other packs keep the tile.
+fn pack_is_vamora(icon_url: &str) -> bool {
+    let path = icon_url.strip_prefix("file://").unwrap_or(icon_url);
+    let Some(rest) = path.strip_prefix("/usr/share/icons/") else { return false };
+    let Some(theme) = rest.split('/').next() else { return false };
+    std::fs::read_to_string(format!("/usr/share/icons/{theme}/index.theme")).map(|s| {
+        s.lines().any(|l| { let l = l.trim(); l.eq_ignore_ascii_case("VamoraPackage=true") })
+    }).unwrap_or(false)
 }

@@ -162,6 +162,26 @@ Window {
     // the Rust side.
     property bool isDark: true
 
+    // Same trick for the network indicators: mirror the Rust values into
+    // plain QML properties on every refresh so the icons always update.
+    property bool netWifiOn: false
+    property int netWifiBars: 0
+    property bool netBluetoothOn: false
+    property bool batPresent: false
+    property int batPercent: 100
+    property bool batCharging: false
+    property int batType: 1   // statusbar.battery_type: 1 % beside, 2 % inside, 3 no %
+    function syncNetwork() {
+        userInfo.refresh()
+        netWifiOn = userInfo.wifi_enabled
+        netWifiBars = userInfo.wifi_strength
+        netBluetoothOn = userInfo.bluetooth_on
+        batPresent = userInfo.battery_present
+        batPercent = userInfo.battery_percent
+        batCharging = userInfo.battery_charging
+        batType = userInfo.battery_type
+    }
+
     Timer {
         interval: 1000
         running: true
@@ -173,7 +193,7 @@ Window {
         interval: 5000
         running: true
         repeat: true
-        onTriggered: userInfo.refresh()
+        onTriggered: syncNetwork()
     }
 
     // Statusbar never closes, so it can't pick up appearance.theme changes
@@ -424,11 +444,23 @@ Window {
                             layer.effect: ColorOverlay { color: cText }
                         }
 
+                        // Only while Bluetooth is powered on.
                         Image {
                             width: iconSize
                             height: iconSize
+                            visible: netBluetoothOn
+                            source: "../../assets/icons/bluetooth.svg"
+                            layer.enabled: true
+                            layer.effect: ColorOverlay { color: cText }
+                        }
+
+                        // Hidden entirely while Wi-Fi is off or there is no Wi-Fi device.
+                        Image {
+                            width: iconSize
+                            height: iconSize
+                            visible: netWifiOn
                             source: {
-                                switch (userInfo.wifiStrength) {
+                                switch (netWifiBars) {
                                     case 4: return "../../assets/icons/wifi/wifi.svg"
                                     case 3: return "../../assets/icons/wifi/wifi-high.svg"
                                     case 2: return "../../assets/icons/wifi/wifi-low.svg"
@@ -440,12 +472,101 @@ Window {
                             layer.effect: ColorOverlay { color: cText }
                         }
 
-                        Image {
-                            width: iconSize
+                        // Battery: "74%" next to a plain level icon; a bolt over the icon while
+                        // charging. Hidden on machines without a battery.
+                        Row {
+                            id: battery
+                            visible: batPresent
+                            spacing: 4
                             height: iconSize
-                            source: "../../assets/icons/battery/battery-full.svg"
-                            layer.enabled: true
-                            layer.effect: ColorOverlay { color: cText }
+                            readonly property color levelColor: batCharging ? "#34d399"
+                                : (batPercent <= 20 ? "#ef4444" : cText)
+
+                            Text {
+                                visible: batType === 1
+                                height: iconSize
+                                verticalAlignment: Text.AlignVCenter
+                                text: batPercent + "%"
+                                color: cText
+                                font.pixelSize: 12
+                                font.weight: Font.DemiBold
+                            }
+
+                            Item {
+                                width: batType === 2 ? 32 : 28
+                                height: iconSize
+
+                                Rectangle {
+                                    id: batBody
+                                    readonly property bool inside: batType === 2
+                                    y: (parent.height - height) / 2
+                                    width: inside ? 28 : 24
+                                    height: inside ? 15 : 12
+                                    radius: inside ? 5 : 4
+                                    color: "transparent"
+                                    border.width: 1.5
+                                    border.color: Qt.rgba(cText.r, cText.g, cText.b, 0.6)
+
+                                    Rectangle {
+                                        x: 2; y: 2
+                                        height: parent.height - 4
+                                        width: Math.max(batPercent > 0 ? 3 : 0, (parent.width - 4) * batPercent / 100)
+                                        radius: 2
+                                        color: battery.levelColor
+                                        opacity: batBody.inside ? 0.4 : 1
+                                    }
+
+                                    // Style 2: percentage inside, with a small bolt while charging.
+                                    Row {
+                                        visible: batBody.inside
+                                        anchors.centerIn: parent
+                                        spacing: 1
+                                        Image {
+                                            visible: batCharging
+                                            width: 7; height: 10
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            source: "../../assets/icons/battery/bolt.svg"
+                                            layer.enabled: true
+                                            layer.effect: ColorOverlay { color: cText }
+                                        }
+                                        Text {
+                                            text: batPercent
+                                            color: cText
+                                            font.pixelSize: 10
+                                            font.bold: true
+                                        }
+                                    }
+                                }
+                                Rectangle {
+                                    x: batBody.width + 1; width: 2; height: 4
+                                    anchors.verticalCenter: batBody.verticalCenter
+                                    radius: 1
+                                    color: Qt.rgba(cText.r, cText.g, cText.b, 0.6)
+                                }
+
+                                // Charging bolt: a little taller than the battery, with a
+                                // contrasting rim so it reads on top of the fill.
+                                Item {
+                                    visible: batCharging && !batBody.inside
+                                    width: 16; height: 18
+                                    x: batBody.x + (batBody.width - width) / 2
+                                    y: (parent.height - height) / 2
+                                    Image {
+                                        anchors.centerIn: parent
+                                        width: 18; height: 20
+                                        source: "../../assets/icons/battery/bolt.svg"
+                                        layer.enabled: true
+                                        layer.effect: ColorOverlay { color: effDark ? "#18181b" : "#fafafa" }
+                                    }
+                                    Image {
+                                        anchors.centerIn: parent
+                                        width: 15; height: 17
+                                        source: "../../assets/icons/battery/bolt.svg"
+                                        layer.enabled: true
+                                        layer.effect: ColorOverlay { color: effDark ? "#f4f4f5" : "#18181b" }
+                                    }
+                                }
+                            }
                         }
                     }
 

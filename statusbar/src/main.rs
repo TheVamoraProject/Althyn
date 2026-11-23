@@ -2,6 +2,8 @@ use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QUrl};
 mod applist;
 mod cxxqt_object;
 mod device;
+mod network;
+mod power;
 mod wltoplevel;
 mod x11maximize;
 mod x11luma;

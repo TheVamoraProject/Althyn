@@ -1,0 +1,17 @@
+[Widget]
+Name=Notes
+Id=com.vamora.notes
+Package=Notes
+Vamify=true
+
+[UI]
+Type=QML
+Source=Notes.qml
+
+[Size]
+Width=2
+Height=2
+MinWidth=1
+MinHeight=1
+MaxWidth=4
+MaxHeight=4

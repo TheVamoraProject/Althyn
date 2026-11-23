@@ -13,6 +13,8 @@ description = "Althyn's Wayland compositor (Smithay)"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 bitflags = "2.2.1"
+# Titlebar text (compositor-drawn window decorations, src/titlebar.rs)
+ab_glyph = "0.2"
 # wlr-foreign-toplevel-management server (src/foreign_toplevel.rs)
 wayland-protocols-wlr = { version = "0.3", default-features = false, features = ["server"] }
 # Only used by the udev backend (see `udev` feature).

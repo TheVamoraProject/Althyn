@@ -15,6 +15,15 @@ Item {
     // of the page, requesting a move to the adjacent page. direction is
     // -1 (previous page) or +1 (next page).
     signal requestPageShift(var itemData, int direction)
+    // Something was dropped on this page (see the DropArea below): either one
+    // of our own icons (internal) or files from elsewhere. window.qml does the work.
+    signal dropped(var info)
+    // A drag that started on one of this page's icons has ended.
+    signal dragFinished(var itemData, int dropAction)
+    signal openFolder(string path)
+    property int pageIndex: 0
+    readonly property int pageCellW: Math.max(1, Math.floor((page.width - 32) / page.cols))
+    readonly property int pageCellH: Math.max(1, Math.floor((page.height - 32) / page.rows))
     // How close to the true page edge (in px) a dropped item must be to move
     // it to the adjacent page instead of just repositioning it on this page.
     property int edgeZone: 30
@@ -40,6 +49,91 @@ Item {
     // Fired when a resize drag that was started via the explicit "Resize"
     // menu action finishes, so window.qml can turn page-swiping back on.
     signal endResizeItem()
+
+    // ---- Drag and drop ----------------------------------------------------
+    // Every icon is dragged as a real file (text/uri-list), so it can be dropped
+    // on the Dock or into a file manager, and files from a file manager can be
+    // dropped here. The extra application/x-althyn-home-item format marks our own
+    // icons so a drop inside the homescreen just repositions them.
+    function uriFor(path) {
+        return encodeURI("file://" + path).replace(/#/g, "%23").replace(/\?/g, "%3F")
+    }
+    function sourcePath(item) {
+        if (item.type === "app") return item.desktopPath || ""
+        if (item.type === "folder") return item.path || ""
+        var w = page.availableWidgets.find(function(x) { return x.package === item.package })
+        return w ? (w.manifest || "") : ""
+    }
+    function mimeFor(item, gx, gy) {
+        var m = {}
+        m["application/x-althyn-home-item"] = JSON.stringify({
+            type: item.type, id: item.id || "", package: item.package || "", path: item.path || "",
+            gx: gx, gy: gy, w: item.width || 1, h: item.height || 1,
+            left: 16 + item.x * page.pageCellW, top: 16 + item.y * page.pageCellH })
+        var path = page.sourcePath(item)
+        if (path !== "") { m["text/uri-list"] = page.uriFor(path) + "\r\n"; m["text/plain"] = path }
+        return m
+    }
+    // The grid cell a drop at (px, py) lands on. Our own icons keep the spot they
+    // were grabbed at; files from elsewhere land on the cell under the pointer.
+    function targetCell(px, py, internal) {
+        var w = internal ? internal.w : 1, h = internal ? internal.h : 1
+        var cx = internal ? Math.round((px - internal.gx - 16) / page.pageCellW) : Math.floor((px - 16) / page.pageCellW)
+        var cy = internal ? Math.round((py - internal.gy - 16) / page.pageCellH) : Math.floor((py - 16) / page.pageCellH)
+        return { col: Math.max(0, Math.min(page.cols - w, cx)), row: Math.max(0, Math.min(page.rows - h, cy)), w: w, h: h }
+    }
+
+    Rectangle {
+        id: dropHighlight
+        visible: dropArea.containsDrag && dropArea.cell !== null
+        x: 16 + (dropArea.cell ? dropArea.cell.col : 0) * page.pageCellW + 4
+        y: 16 + (dropArea.cell ? dropArea.cell.row : 0) * page.pageCellH + 4
+        width: (dropArea.cell ? dropArea.cell.w : 1) * page.pageCellW - 8
+        height: (dropArea.cell ? dropArea.cell.h : 1) * page.pageCellH - 8
+        radius: 14
+        color: page.hoverColor
+    }
+
+    DropArea {
+        id: dropArea
+        anchors.fill: parent
+        property var cell: null
+        property var internal: null
+        function parseInternal(ev) {
+            if (ev.formats.indexOf("application/x-althyn-home-item") < 0) return null
+            try { return JSON.parse(ev.getDataAsString("application/x-althyn-home-item")) } catch (e) { return null }
+        }
+        onEntered: function(ev) {
+            internal = parseInternal(ev)
+            ev.accepted = internal !== null || ev.hasUrls
+            cell = ev.accepted ? page.targetCell(ev.x, ev.y, internal) : null
+        }
+        onPositionChanged: function(ev) {
+            if (cell !== null) cell = page.targetCell(ev.x, ev.y, internal)
+        }
+        onExited: { cell = null; internal = null }
+        onDropped: function(ev) {
+            var internalPayload = parseInternal(ev)
+            var urls = []
+            if (ev.hasUrls) for (var i = 0; i < ev.urls.length; i++) urls.push(String(ev.urls[i]))
+            if (urls.length === 0 && internalPayload === null && ev.formats.indexOf("text/plain") >= 0) {
+                var lines = String(ev.getDataAsString("text/plain")).split("\n")
+                for (var j = 0; j < lines.length; j++) {
+                    var l = lines[j].trim()
+                    if (l.indexOf("/") === 0) urls.push("file://" + l)
+                    else if (l.indexOf("file://") === 0) urls.push(l)
+                }
+            }
+            var spot = page.targetCell(ev.x, ev.y, internalPayload)
+            ev.acceptProposedAction()
+            page.dropped({
+                internal: internalPayload, urls: urls, move: ev.proposedAction === Qt.MoveAction,
+                px: ev.x, py: ev.y, col: spot.col, row: spot.row, w: spot.w, h: spot.h,
+                cellW: page.pageCellW, cellH: page.pageCellH, pageWidth: page.width,
+                edgeZone: page.edgeZone, dragThreshold: page.meaningfulDragThreshold })
+            cell = null; internal = null
+        }
+    }
 
     MouseArea {
         anchors.fill: parent
@@ -72,7 +166,24 @@ Item {
             y: 16 + itemData.y * cellH
             width: Math.max(cellW, itemData.width * cellW)
             height: Math.max(cellH, itemData.height * cellH)
-            z: dragArea.drag.active ? 10 : 1
+            z: cell.Drag.active ? 10 : 1
+
+            // Native drag (see "Drag and drop" above). Apps and widgets are
+            // offered as a Move (the file leaves the homescreen with the drop);
+            // folders are only referenced, so they are offered as Copy/Link.
+            Drag.dragType: Drag.Automatic
+            Drag.supportedActions: itemData.type === "folder" ? (Qt.CopyAction | Qt.LinkAction) : Qt.MoveAction
+            Drag.proposedAction: itemData.type === "folder" ? Qt.LinkAction : Qt.MoveAction
+            Drag.onDragFinished: function(dropAction) { page.dragFinished(itemData, dropAction) }
+            function beginNativeDrag(gx, gy) {
+                cell.grabToImage(function(result) {
+                    if (!dragArea.pressed) return   // released before the snapshot was ready
+                    cell.Drag.imageSource = result.url
+                    cell.Drag.hotSpot = Qt.point(gx, gy)
+                    cell.Drag.mimeData = page.mimeFor(itemData, gx, gy)
+                    cell.Drag.active = true
+                })
+            }
 
             // iOS/HyperOS-style entrance: only on the initial homescreen load
             // (page.animateEntrance), icons "bloom" in from small+transparent
@@ -104,14 +215,17 @@ Item {
                 id: appTileComponent
                 AppTile {
                     appName: itemData.appName || (itemData.type === "folder" ? (itemData.name || "Folder") : "")
-                    iconPath: itemData.iconPath || "../../assets/icons/unknown.svg"
+                    iconPath: itemData.type === "folder" ? "../../assets/icons/folder.svg" : (itemData.iconPath || "../../assets/icons/unknown.svg")
                     directRound: !!itemData.directRound || !itemData.iconPath
                     bgColor: itemData.bgColor || ""
                     iconCornerRadiusRaw: page.iconCornerRadiusRaw
                     tileSpanW: itemData.width || 1
                     tileSpanH: itemData.height || 1
                     textColor: page.textColor; hoverColor: page.hoverColor
-                    onClicked: { if (itemData.type === "app") page.launch(itemData.execStr || "") }
+                    onClicked: {
+                        if (itemData.type === "app") page.launch(itemData.execStr || "")
+                        else if (itemData.type === "folder") page.openFolder(itemData.path || "")
+                    }
                     onRightClicked: function(px,py) { page.appRightClicked(px,py,itemData) }
                 }
             }
@@ -135,24 +249,18 @@ Item {
             }
             MouseArea {
                 id: dragArea; anchors.fill: parent; acceptedButtons: Qt.LeftButton; hoverEnabled: true; propagateComposedEvents: true
-                drag.target: cell; drag.axis: Drag.XAndYAxis
-
+                // Keeps the page swipe from taking over once an icon is pressed.
+                preventStealing: true
                 property real pressX: 0
                 property real pressY: 0
-
-                onPressed: { dragArea.pressX = cell.x; dragArea.pressY = cell.y }
-
-                onReleased: {
-                    var draggedDistance = Math.abs(cell.x - dragArea.pressX) + Math.abs(cell.y - dragArea.pressY)
-                    var nearLeftEdge = cell.x <= page.edgeZone
-                    var nearRightEdge = (cell.x + cell.width) >= (page.width - page.edgeZone)
-                    if (draggedDistance >= page.meaningfulDragThreshold && (nearLeftEdge || nearRightEdge)) {
-                        page.requestPageShift(itemData, nearLeftEdge ? -1 : 1)
-                        return
-                    }
-                    var nx=Math.max(0,Math.min(page.cols-itemData.width,Math.round((cell.x-16)/cellW)))
-                    var ny=Math.max(0,Math.min(page.rows-itemData.height,Math.round((cell.y-16)/cellH)))
-                    itemData.x=nx; itemData.y=ny; cell.x=16+nx*cellW; cell.y=16+ny*cellH; page.itemChanged(itemData)
+                property bool dragStarted: false
+                onPressed: function(mouse) { pressX = mouse.x; pressY = mouse.y; dragStarted = false }
+                onPositionChanged: function(mouse) {
+                    if (!pressed || dragStarted || cell.Drag.active) return
+                    var dx = mouse.x - pressX, dy = mouse.y - pressY
+                    if (Math.sqrt(dx * dx + dy * dy) < Qt.styleHints.startDragDistance) return
+                    dragStarted = true
+                    cell.beginNativeDrag(pressX, pressY)
                 }
             }
             Rectangle { width: 14; height: 14; radius: 4; color: page.textColor; visible: page.resizingItem === itemData; anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: 3

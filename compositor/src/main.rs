@@ -10,6 +10,8 @@ mod foreign_toplevel;
 mod grabs;
 mod handlers;
 mod input;
+mod render;
+mod titlebar;
 mod shell;
 mod state;
 

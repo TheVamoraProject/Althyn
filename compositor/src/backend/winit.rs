@@ -11,11 +11,12 @@ use smithay::{
         egl::EGLDevice,
         renderer::{
             ImportDma, ImportMemWl, damage::OutputDamageTracker,
-            element::surface::WaylandSurfaceRenderElement, gles::GlesRenderer,
+            element::{Kind, surface::{WaylandSurfaceRenderElement, render_elements_from_surface_tree}},
+            gles::GlesRenderer,
         },
         winit::{self, WinitEvent, WinitGraphicsBackend},
     },
-    desktop::{layer_map_for_output, space::render_output},
+    desktop::layer_map_for_output,
     output::{Mode, Output, PhysicalProperties, Subpixel},
     reexports::{
         calloop::EventLoop,
@@ -27,11 +28,12 @@ use smithay::{
         wayland_server::Display,
     },
     utils::Transform,
+    utils::IsAlive,
     wayland::dmabuf::DmabufFeedbackBuilder,
 };
 use tracing::{info, warn};
 
-use crate::{backend::Backend, state::State};
+use crate::{backend::Backend, render::{SceneElement, scene_elements}, state::State};
 
 pub const OUTPUT_NAME: &str = "winit";
 /// Background shown behind everything (Althyn's `bgPrimary` in dark mode).
@@ -168,11 +170,24 @@ pub fn init(
 
 impl State {
     fn winit_redraw(&mut self) {
+        // The drag icon (if a client is dragging something) follows the pointer.
+        let pointer_location = self
+            .seat
+            .get_pointer()
+            .map(|pointer| pointer.current_location())
+            .unwrap_or_default();
+        let dnd_icon = self
+            .dnd_icon
+            .as_ref()
+            .filter(|icon| icon.surface.alive())
+            .map(|icon| (icon.surface.clone(), icon.effective_offset()));
+
         #[allow(irrefutable_let_patterns)]
         let Backend::Winit(data) = &mut self.backend else {
             return;
         };
         let output = data.output.clone();
+        let (corner_radius, animations, dark) = (self.config.corner_radius, self.config.animations, self.config.dark_theme);
         let size = data.backend.window_size();
         if size.w == 0 || size.h == 0 {
             return;
@@ -184,15 +199,28 @@ impl State {
                 warn!("could not bind the nested framebuffer");
                 return;
             };
-            match render_output::<_, WaylandSurfaceRenderElement<GlesRenderer>, _, _>(
-                &output,
+            let mut elements: Vec<SceneElement> = match &dnd_icon {
+                Some((surface, offset)) => render_elements_from_surface_tree::<_, WaylandSurfaceRenderElement<GlesRenderer>>(
+                    renderer,
+                    surface,
+                    (pointer_location + offset.to_f64())
+                        .to_physical(1.0)
+                        .to_i32_round(),
+                    1.0,
+                    1.0,
+                    Kind::Unspecified,
+                )
+                .into_iter()
+                .map(SceneElement::Surface)
+                .collect(),
+                None => Vec::new(),
+            };
+            elements.extend(scene_elements(renderer, &self.space, &output, corner_radius, animations, dark));
+            match data.damage_tracker.render_output(
                 renderer,
                 &mut framebuffer,
-                1.0,
                 age,
-                [&self.space],
-                &[],
-                &mut data.damage_tracker,
+                &elements,
                 CLEAR_COLOR,
             ) {
                 Ok(result) => result.damage.cloned(),

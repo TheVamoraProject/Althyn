@@ -6,7 +6,7 @@ use smithay::{
     backend::allocator::dmabuf::Dmabuf,
     input::{
         Seat, SeatHandler, SeatState,
-        dnd::{DnDGrab, DndGrabHandler, GrabType, Source},
+        dnd::{DnDGrab, DndGrabHandler, DndTarget, GrabType, Source},
         pointer::{CursorImageStatus, Focus},
         tablet::TabletSeatHandler,
     },
@@ -14,7 +14,7 @@ use smithay::{
         wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode,
         wayland_server::{Resource, protocol::wl_surface::WlSurface},
     },
-    utils::Serial,
+    utils::{Logical, Point, Serial},
     wayland::{
         dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier},
         foreign_toplevel_list::{ForeignToplevelListHandler, ForeignToplevelListState},
@@ -90,29 +90,55 @@ impl PrimarySelectionHandler for State {
     }
 }
 
-impl DndGrabHandler for State {}
+impl DndGrabHandler for State {
+    fn dropped(
+        &mut self,
+        _target: Option<DndTarget<'_, Self>>,
+        _validated: bool,
+        _seat: Seat<Self>,
+        _location: Point<f64, Logical>,
+    ) {
+        self.dnd_icon = None;
+    }
+
+    fn cancelled(&mut self, _seat: Seat<Self>, _location: Point<f64, Logical>) {
+        self.dnd_icon = None;
+    }
+}
 impl WaylandDndGrabHandler for State {
     fn dnd_requested<S: Source>(
         &mut self,
         source: S,
-        _icon: Option<WlSurface>,
+        icon: Option<WlSurface>,
         seat: Seat<Self>,
         serial: Serial,
         type_: GrabType,
     ) {
+        self.dnd_icon = icon.map(|surface| crate::state::DndIcon {
+            surface,
+            offset: (0, 0).into(), placed: false,
+        });
+
         match type_ {
             GrabType::Pointer => {
                 let ptr = seat.get_pointer().unwrap();
                 let Some(start_data) = ptr.grab_start_data() else {
                     source.cancel();
+                    self.dnd_icon = None;
                     return;
                 };
                 let grab = DnDGrab::new_pointer(&self.display_handle, start_data, source, seat);
                 ptr.set_grab(self, grab, serial, Focus::Keep);
             }
             GrabType::Touch => {
-                // Touch drag and drop is not part of the base.
-                source.cancel();
+                let touch = seat.get_touch().unwrap();
+                let Some(start_data) = touch.grab_start_data() else {
+                    source.cancel();
+                    self.dnd_icon = None;
+                    return;
+                };
+                let grab = DnDGrab::new_touch(&self.display_handle, start_data, source, seat);
+                touch.set_grab(self, grab, serial);
             }
         }
     }
@@ -132,20 +158,41 @@ impl OutputHandler for State {}
 // told to decorate itself.
 //
 
-impl XdgDecorationHandler for State {
-    fn new_decoration(&mut self, toplevel: ToplevelSurface) {
-        toplevel.with_pending_state(|s| s.decoration_mode = Some(DecorationMode::ClientSide));
+impl State {
+    /// Server-side for clients that want a titlebar from us; Althyn's own apps
+    /// and clients that ask for client-side keep drawing their own.
+    fn negotiate_decoration(&mut self, toplevel: ToplevelSurface, wants_client: bool) {
+        let own = {
+            let id = smithay::wayland::compositor::with_states(toplevel.wl_surface(), |s| {
+                s.data_map
+                    .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+                    .and_then(|d| d.lock().ok().and_then(|d| d.app_id.clone()))
+            })
+            .unwrap_or_default();
+            crate::render::is_self_decorated(&id)
+        };
+        let server = !wants_client && !own;
+        toplevel.with_pending_state(|s| {
+            s.decoration_mode = Some(if server { DecorationMode::ServerSide } else { DecorationMode::ClientSide });
+        });
+        crate::titlebar::set_server_decorated(toplevel.wl_surface(), server);
         if toplevel.is_initial_configure_sent() {
             toplevel.send_pending_configure();
         }
     }
+}
 
-    fn request_mode(&mut self, toplevel: ToplevelSurface, _mode: DecorationMode) {
-        self.new_decoration(toplevel);
+impl XdgDecorationHandler for State {
+    fn new_decoration(&mut self, toplevel: ToplevelSurface) {
+        self.negotiate_decoration(toplevel, false);
+    }
+
+    fn request_mode(&mut self, toplevel: ToplevelSurface, mode: DecorationMode) {
+        self.negotiate_decoration(toplevel, mode == DecorationMode::ClientSide);
     }
 
     fn unset_mode(&mut self, toplevel: ToplevelSurface) {
-        self.new_decoration(toplevel);
+        self.negotiate_decoration(toplevel, false);
     }
 }
 

@@ -40,6 +40,18 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "getWidgetsJson"]
         fn get_widgets_json(self: &AppList) -> QString;
+        /// Takes dropped files (newline-separated file URIs) into the
+        /// homescreen: `.desktop` apps and `.widget` manifests are moved
+        /// (`move_files`) or copied into ~/Desktop, folders are referenced in
+        /// place. Returns a JSON array of what was accepted:
+        /// {kind:"app",id}, {kind:"widget",package}, {kind:"folder",path,name}.
+        #[qinvokable]
+        #[cxx_name = "importDropped"]
+        fn import_dropped(self: &AppList, uris: &QString, move_files: bool) -> QString;
+        /// Opens a folder in the default file manager.
+        #[qinvokable]
+        #[cxx_name = "openPath"]
+        fn open_path(self: &AppList, path: &QString);
     }
 }
 
@@ -75,6 +87,35 @@ impl qobject::AppList {
         QString::from(radius.to_string().as_str())
     }
     pub fn get_widgets_json(&self) -> QString { QString::from(widgets_to_json(&scan_widget_files()).as_str()) }
+    pub fn open_path(&self, path: &QString) { let p = format!("{}", path); if !p.is_empty() { let _ = Command::new("xdg-open").arg(p).spawn(); } }
+    pub fn import_dropped(&self, uris: &QString, move_files: bool) -> QString {
+        let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else { return QString::from("[]") };
+        let desktop = home.join("Desktop");
+        let _ = std::fs::create_dir_all(&desktop);
+        let mut out = String::from("[");
+        for uri in format!("{}", uris).lines() {
+            let Some(src) = uri_to_path(uri) else { continue };
+            let item = if src.is_dir() {
+                let name = src.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "Folder".into());
+                Some(format!(r#"{{"kind":"folder","path":"{}","name":"{}"}}"#, esc(&src.to_string_lossy()), esc(&name)))
+            } else {
+                match src.extension().and_then(|x| x.to_str()) {
+                    Some("desktop") => parse_desktop_file(&src).and_then(|app| {
+                        let id = take_into_dir(&src, &desktop, move_files, |p| parse_desktop_file(p).is_some_and(|a| a.exec == app.exec))?;
+                        Some(format!(r#"{{"kind":"app","id":"{}"}}"#, esc(&id)))
+                    }),
+                    Some("widget") => parse_widget_file(&src, &home).and_then(|w| {
+                        take_into_dir(&src, &desktop, move_files, |p| parse_widget_file(p, &home).is_some_and(|o| o.package == w.package))?;
+                        Some(format!(r#"{{"kind":"widget","package":"{}"}}"#, esc(&w.package)))
+                    }),
+                    _ => None,
+                }
+            };
+            if let Some(j) = item { if out.len() > 1 { out.push(',') } out.push_str(&j); }
+        }
+        out.push(']');
+        QString::from(out.as_str())
+    }
 }
 
 struct App { name: String, icon_path: String, exec: String, desktop_path: String, id: String, direct_round: bool, bg_color: String }
@@ -103,6 +144,7 @@ struct App { name: String, icon_path: String, exec: String, desktop_path: String
 // controls whether that rendered content gets rounded corners at all.
 struct Widget {
     id: String,
+    manifest: String,
     name: String,
     package: String,
     source: String,
@@ -113,6 +155,77 @@ struct Widget {
     max_width: i32,
     max_height: i32,
     vamify: bool,
+}
+
+
+/// `file:///a%20b` (or a plain absolute path) -> `/a b`.
+fn uri_to_path(uri: &str) -> Option<PathBuf> {
+    use std::os::unix::ffi::OsStringExt;
+    let u = uri.trim();
+    let rest = if let Some(r) = u.strip_prefix("file://") {
+        r.strip_prefix("localhost").unwrap_or(r)
+    } else if u.starts_with('/') {
+        u
+    } else {
+        return None;
+    };
+    let b = rest.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' && i + 2 < b.len() && b[i + 1].is_ascii_hexdigit() && b[i + 2].is_ascii_hexdigit() {
+            out.push(u8::from_str_radix(std::str::from_utf8(&b[i + 1..i + 3]).ok()?, 16).ok()?);
+            i += 3;
+        } else {
+            out.push(b[i]);
+            i += 1;
+        }
+    }
+    if out.first() != Some(&b'/') { return None }
+    Some(PathBuf::from(std::ffi::OsString::from_vec(out)))
+}
+
+/// `dir/name`, or `dir/stem-N.ext` when that name is taken.
+fn unique_dest(dir: &Path, name: &std::ffi::OsStr) -> PathBuf {
+    let first = dir.join(name);
+    if !first.exists() { return first }
+    let p = Path::new(name);
+    let stem = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let ext = p.extension().map(|s| format!(".{}", s.to_string_lossy())).unwrap_or_default();
+    for n in 1..1000 {
+        let c = dir.join(format!("{stem}-{n}{ext}"));
+        if !c.exists() { return c }
+    }
+    first
+}
+
+/// Moves (rename, falling back to copy + delete across filesystems) or copies.
+fn move_or_copy(src: &Path, dest: &Path, move_files: bool) -> bool {
+    if move_files {
+        if std::fs::rename(src, dest).is_ok() { return true }
+        if std::fs::copy(src, dest).is_ok() {
+            let _ = std::fs::remove_file(src); // may not be allowed (system file): the copy still counts
+            return true;
+        }
+        false
+    } else {
+        std::fs::copy(src, dest).is_ok()
+    }
+}
+
+/// Moves/copies `src` into `dir` unless `same(existing)` says an equivalent
+/// file is already there (then that one is used). Returns the file name now in `dir`.
+fn take_into_dir(src: &Path, dir: &Path, move_files: bool, same: impl Fn(&Path) -> bool) -> Option<String> {
+    let name = src.file_name()?;
+    if src.parent() == Some(dir) { return Some(name.to_string_lossy().to_string()) }
+    let direct = dir.join(name);
+    if direct.exists() && same(&direct) {
+        if move_files { let _ = std::fs::remove_file(src); }
+        return Some(name.to_string_lossy().to_string());
+    }
+    let dest = unique_dest(dir, name);
+    if !move_or_copy(src, &dest, move_files) { return None }
+    Some(dest.file_name()?.to_string_lossy().to_string())
 }
 
 fn homescreen_dir() -> Option<PathBuf> { std::env::var("HOME").ok().map(|h| PathBuf::from(h).join(".VamoraSys/althyn/homescreen")) }
@@ -143,10 +256,47 @@ fn parse_desktop_file(path: &Path) -> Option<App> {
     for line in content.lines().map(str::trim) { if line=="[Desktop Entry]" {active=true;continue} if line.starts_with('[')&&active{break} if !active{continue}
         if let Some(v)=line.strip_prefix("Name="){if name.is_empty(){name=v.into()}} else if let Some(v)=line.strip_prefix("Icon="){if icon.is_empty(){icon=v.into()}} else if let Some(v)=line.strip_prefix("Exec="){if exec.is_empty(){exec=v.into()}} else if let Some(v)=line.strip_prefix("Type="){typ=v.into()} else if line=="NoDisplay=true"||line=="Hidden=true"{hidden=true} else if let Some(v)=line.strip_prefix("VamoraPackage="){if !v.trim().is_empty(){direct_round=true}} else if let Some(v)=line.strip_prefix("BGColor="){if v.trim().starts_with('#'){bg_color=v.trim().to_string()}}
     }
-    if typ!="Application"||hidden||name.is_empty()||exec.is_empty(){return None} let id=path.file_name()?.to_string_lossy().to_string(); Some(App{name,icon_path:resolve_icon(&icon),exec:clean_exec(&exec),desktop_path:path.to_string_lossy().into(),id,direct_round,bg_color})
+    if typ!="Application"||hidden||name.is_empty()||exec.is_empty(){return None} let id=path.file_name()?.to_string_lossy().to_string(); let icon_path=resolve_icon(&icon); let direct_round=direct_round||pack_is_vamora(&icon_path); Some(App{name,icon_path,exec:clean_exec(&exec),desktop_path:path.to_string_lossy().into(),id,direct_round,bg_color})
 }
 fn clean_exec(exec:&str)->String { let mut out=String::new(); let mut c=exec.chars().peekable(); while let Some(x)=c.next(){if x=='%' { c.next(); } else { out.push(x); }}; out.split_whitespace().collect::<Vec<_>>().join(" ") }
-fn resolve_icon(icon:&str)->String { if icon.starts_with('/')&&Path::new(icon).exists(){return format!("file://{icon}")} for p in [format!("/usr/share/icons/hicolor/48x48/apps/{icon}.png"),format!("/usr/share/icons/hicolor/scalable/apps/{icon}.svg"),format!("/usr/share/pixmaps/{icon}.png"),format!("/usr/share/pixmaps/{icon}.svg")] {if Path::new(&p).exists(){return format!("file://{p}")}} String::new() }
+fn resolve_icon(icon: &str) -> String {
+    if icon.starts_with('/') && Path::new(icon).exists() { return format!("file://{icon}") }
+    find_themed_icon(icon).map(|p| format!("file://{p}")).unwrap_or_default()
+}
+
+/// Icon pack chosen in settings (`icons.theme`); falls back to hicolor when unset
+/// or unknown to VamoraSys.
+fn icon_theme() -> String {
+    std::process::Command::new("vamorasys").args(["settings", "get", "icons.theme"]).output().ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty() && !s.contains('/') && !s.contains(".."))
+        .unwrap_or_else(|| "hicolor".to_string())
+}
+
+/// Look `icon` up in the chosen icon pack first, then hicolor, then pixmaps.
+fn find_themed_icon(icon: &str) -> Option<String> {
+    use std::path::Path;
+    if icon.is_empty() || icon.contains('/') || icon.contains("..") { return None }
+    let theme = icon_theme();
+    let mut themes = vec![theme.clone()];
+    if theme != "hicolor" { themes.push("hicolor".to_string()) }
+    for t in &themes {
+        let base = format!("/usr/share/icons/{t}");
+        for sub in ["scalable/apps", "64x64/apps", "48x48/apps", "128x128/apps", "256x256/apps", "apps/scalable", "apps/64", "apps/48", "32/apps", "24/apps", "22/apps", "16/apps"] {
+            for ext in ["svg", "png"] {
+                let p = format!("{base}/{sub}/{icon}.{ext}");
+                if Path::new(&p).exists() { return Some(p) }
+            }
+        }
+    }
+    for p in [format!("/usr/share/pixmaps/{icon}.png"), format!("/usr/share/pixmaps/{icon}.svg")] {
+        if Path::new(&p).exists() { return Some(p) }
+    }
+    None
+}
+
 fn esc(s:&str)->String{s.replace('\\',"\\\\").replace('"',"\\\"").replace('\n',"\\n").replace('\r',"\\r")}
 fn apps_to_json(apps:&[App])->String { let mut o=String::from("["); for (i,a) in apps.iter().enumerate(){if i>0{o.push(',')} o.push_str(&format!(r#"{{"appName":"{}","iconPath":"{}","execStr":"{}","desktopPath":"{}","id":"{}","directRound":{},"bgColor":"{}"}}"#,esc(&a.name),esc(&a.icon_path),esc(&a.exec),esc(&a.desktop_path),esc(&a.id),a.direct_round,esc(&a.bg_color)))} o.push(']');o }
 
@@ -232,6 +382,7 @@ fn parse_widget_file(path: &Path, home: &Path) -> Option<Widget> {
 
     Some(Widget {
         id,
+        manifest: path.to_string_lossy().to_string(),
         name,
         package,
         source: format!("file://{}", qml_path.to_string_lossy()),
@@ -249,8 +400,8 @@ fn widgets_to_json(widgets: &[Widget]) -> String {
     for (i, w) in widgets.iter().enumerate() {
         if i > 0 { o.push(',') }
         o.push_str(&format!(
-            r#"{{"id":"{}","name":"{}","package":"{}","source":"{}","width":{},"height":{},"minWidth":{},"minHeight":{},"maxWidth":{},"maxHeight":{},"vamify":{}}}"#,
-            esc(&w.id), esc(&w.name), esc(&w.package), esc(&w.source),
+            r#"{{"id":"{}","manifest":"{}","name":"{}","package":"{}","source":"{}","width":{},"height":{},"minWidth":{},"minHeight":{},"maxWidth":{},"maxHeight":{},"vamify":{}}}"#,
+            esc(&w.id), esc(&w.manifest), esc(&w.name), esc(&w.package), esc(&w.source),
             w.width, w.height, w.min_width, w.min_height, w.max_width, w.max_height, w.vamify
         ));
     }
@@ -259,4 +410,18 @@ fn widgets_to_json(widgets: &[Widget]) -> String {
 }
 
 #[cfg(test)]
-mod tests { use super::*; #[test] fn grid_parses(){assert_eq!(parse_grid("5x7"),Some((5,7)));} #[test] fn exec_codes_removed(){assert_eq!(clean_exec("foo %U --bar"),"foo --bar");} }
+mod tests { use super::*; #[test] fn grid_parses(){assert_eq!(parse_grid("5x7"),Some((5,7)));} #[test] fn exec_codes_removed(){assert_eq!(clean_exec("foo %U --bar"),"foo --bar");}
+    #[test] fn uri_decodes(){assert_eq!(uri_to_path("file:///home/a%20b/x.desktop"),Some(PathBuf::from("/home/a b/x.desktop"))); assert_eq!(uri_to_path("https://x"),None);}
+    #[test] fn unique_names(){ let d=std::env::temp_dir().join(format!("althyn-home-test-{}",std::process::id())); std::fs::create_dir_all(&d).unwrap(); std::fs::write(d.join("a.desktop"),"x").unwrap(); assert_eq!(unique_dest(&d,std::ffi::OsStr::new("a.desktop")),d.join("a-1.desktop")); let _=std::fs::remove_dir_all(&d); } }
+
+/// An icon pack opts in with `VamoraPackage=true` in its index.theme: its icons
+/// are full-bleed and drawn like Vamora icons (rounded by the corner-radius
+/// setting, no backing tile). Icons from other packs keep the tile.
+fn pack_is_vamora(icon_url: &str) -> bool {
+    let path = icon_url.strip_prefix("file://").unwrap_or(icon_url);
+    let Some(rest) = path.strip_prefix("/usr/share/icons/") else { return false };
+    let Some(theme) = rest.split('/').next() else { return false };
+    std::fs::read_to_string(format!("/usr/share/icons/{theme}/index.theme")).map(|s| {
+        s.lines().any(|l| { let l = l.trim(); l.eq_ignore_ascii_case("VamoraPackage=true") })
+    }).unwrap_or(false)
+}

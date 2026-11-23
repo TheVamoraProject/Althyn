@@ -12,6 +12,12 @@ pub mod qobject {
         #[qproperty(QString, username)]
         #[qproperty(QString, full_name)]
         #[qproperty(i32, wifi_strength)]
+        #[qproperty(bool, wifi_enabled)]
+        #[qproperty(bool, bluetooth_on)]
+        #[qproperty(bool, battery_present)]
+        #[qproperty(i32, battery_percent)]
+        #[qproperty(bool, battery_charging)]
+        #[qproperty(i32, battery_type)]
         type UserInfo = super::UserInfoRust;
 
         #[qinvokable]
@@ -29,15 +35,29 @@ pub struct UserInfoRust {
     username: QString,
     full_name: QString,
     wifi_strength: i32,
+    wifi_enabled: bool,
+    bluetooth_on: bool,
+    battery_present: bool,
+    battery_percent: i32,
+    battery_charging: bool,
+    battery_type: i32,
 }
 
 impl Default for UserInfoRust {
     fn default() -> Self {
+        let net = crate::network::read();
+        let bat = crate::power::read();
         Self {
             pfp_path: QString::from(&find_pfp_path()),
             username: QString::from(&current_username()),
             full_name: QString::from(&find_full_name()),
-            wifi_strength: read_wifi_strength(),
+            wifi_strength: net.wifi_bars,
+            wifi_enabled: net.wifi_on,
+            bluetooth_on: net.bluetooth_on,
+            battery_present: bat.present,
+            battery_percent: bat.percent,
+            battery_charging: bat.charging,
+            battery_type: crate::power::effective_type(crate::power::battery_type()),
         }
     }
 }
@@ -49,7 +69,15 @@ impl qobject::UserInfo {
         let user = current_username();
         self.as_mut().set_username(QString::from(&user));
         self.as_mut().set_full_name(QString::from(&find_full_name()));
-        self.set_wifi_strength(read_wifi_strength());
+        let net = crate::network::read();
+        self.as_mut().set_wifi_strength(net.wifi_bars);
+        self.as_mut().set_wifi_enabled(net.wifi_on);
+        self.as_mut().set_bluetooth_on(net.bluetooth_on);
+        let bat = crate::power::read();
+        self.as_mut().set_battery_present(bat.present);
+        self.as_mut().set_battery_percent(bat.percent);
+        self.as_mut().set_battery_charging(bat.charging);
+        self.set_battery_type(crate::power::effective_type(crate::power::battery_type()));
     }
 }
 
@@ -95,31 +123,6 @@ fn find_full_name() -> String {
     }
 
     user
-}
-
-/// Reads wifi link quality from /proc/net/wireless and maps it to 0–4 bars.
-/// Returns 0 if wifi is disconnected or the interface isn't found.
-fn read_wifi_strength() -> i32 {
-    let content = std::fs::read_to_string("/proc/net/wireless").unwrap_or_default();
-    for line in content.lines().skip(2) {
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        // Format: iface: status link. level. noise. ...
-        // parts[0] = "wlan0:", parts[2] = link quality (may have trailing dot)
-        if parts.len() >= 3 {
-            let quality_str = parts[2].trim_end_matches('.');
-            if let Ok(quality) = quality_str.parse::<f64>() {
-                // Link quality is typically 0–70 on Linux
-                return match quality as i32 {
-                    q if q >= 56 => 4,
-                    q if q >= 42 => 3,
-                    q if q >= 28 => 2,
-                    q if q >= 1  => 1,
-                    _            => 0,
-                };
-            }
-        }
-    }
-    0
 }
 
 /// Checks the common places a Linux profile picture actually lives, in

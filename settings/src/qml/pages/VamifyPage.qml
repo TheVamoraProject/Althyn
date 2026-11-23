@@ -196,6 +196,8 @@ Item {
             dockPosition = readSetting("dock.position", dockPosition)
             break
         case "windows":
+            var wmRadius = parseFloat(readSetting("wm.corner_radius", ""))
+            if (!isNaN(wmRadius)) windowsCornerPx = wmRadius
             wmAnimations = toBool(readSetting("wm.animations", ""), wmAnimations)
             wmFocusMode = readSetting("wm.focus_mode", wmFocusMode)
             wmTransparency = toBool(readSetting("wm.transparency", ""), wmTransparency)
@@ -1504,7 +1506,7 @@ Item {
                     Layout.fillWidth: true
                     spacing: 14
                     Text { text: "Windows"; color: pageText; font { pixelSize: 15; weight: Font.DemiBold } }
-                    Text { text: "Configure window behavior. \"Rounded corners\", \"Window shadows\", \"Snap assist\", and the corner radius/gap sliders aren't real VamoraSys settings yet, so they stay local to this page."; color: pageMuted; font.pixelSize: 12; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    Text { text: "Configure window behavior. \"Rounded corners\", \"Window shadows\", \"Snap assist\", and the gap slider aren't real VamoraSys settings yet, so they stay local to this page."; color: pageMuted; font.pixelSize: 12; wrapMode: Text.WordWrap; Layout.fillWidth: true }
 
                     Card {
                         implicitHeight: windowsToggles.implicitHeight
@@ -1519,9 +1521,14 @@ Item {
 
                     LabeledSlider {
                         label: "Corner radius"; valueText: Math.round(vamifyPage.windowsCornerPx) + "px"
-                        value: vamifyPage.windowsCornerPx; fromVal: 0; toVal: 24; stepVal: 1
-                        enabled: vamifyPage.windowsRounded; opacity: vamifyPage.windowsRounded ? 1 : 0.4
+                        value: vamifyPage.windowsCornerPx; fromVal: 0; toVal: 32; stepVal: 1
+                        // Real VamoraSys setting (wm.corner_radius); Settings' own window follows it.
                         onMoved: function(v) { vamifyPage.windowsCornerPx = v }
+                        onReleased: {
+                            if (vamifyPage.writeSetting("wm.corner_radius", Math.round(vamifyPage.windowsCornerPx).toString())
+                                    && vamifyPage.settingsWindow)
+                                vamifyPage.settingsWindow.wmCornerRadius = Math.round(vamifyPage.windowsCornerPx)
+                        }
                     }
                     LabeledSlider {
                         label: "Gap size"; valueText: Math.round(vamifyPage.windowsGapPx) + "px"

@@ -122,7 +122,8 @@ Window {
     }
 
     property bool systemWantsHide: false
-    readonly property bool hoverRaw: revealArea.containsMouse || dockMouseTracker.containsMouse
+    property bool dragOver: false
+    readonly property bool hoverRaw: revealArea.containsMouse || dockMouseTracker.containsMouse || dragOver
     // Debounced: hoverRaw can flicker for a moment when the window itself
     // resizes (WMs sometimes emit a spurious enter/leave around a native
     // resize or restack), which without this caused the dock to bounce up
@@ -195,6 +196,38 @@ Window {
         hoverEnabled: true
     }
 
+    // Accepts .desktop files dragged from the homescreen or a file manager.
+    // A Move drop (the homescreen's default) takes the file out of its source.
+    DropArea {
+        anchors.fill: parent
+        // The URLs themselves only arrive with the drop on Wayland, so accept
+        // on the advertised format here; addDropped() ignores non-.desktop files.
+        onEntered: function(drag) {
+            var ok = drag.formats.indexOf("text/uri-list") >= 0
+            drag.accepted = ok
+            window.dragOver = ok
+        }
+        onExited: window.dragOver = false
+        onDropped: function(drop) {
+            window.dragOver = false
+            var urls = []
+            for (var i = 0; i < drop.urls.length; i++) urls.push(String(drop.urls[i]))
+            // Without a file-transfer portal Qt may hand back no URLs for a
+            // file list; fall back to the plain-text paths our sources also set.
+            if (urls.length === 0 && drop.formats.indexOf("text/plain") >= 0) {
+                var lines = String(drop.getDataAsString("text/plain")).split("\n")
+                for (var j = 0; j < lines.length; j++) {
+                    var l = lines[j].trim()
+                    if (l.indexOf("/") === 0) urls.push("file://" + l)
+                    else if (l.indexOf("file://") === 0) urls.push(l)
+                }
+            }
+            drop.accept()
+            dockModel.addDropped(urls.join("\n"), drop.proposedAction === Qt.MoveAction)
+            window.load()
+        }
+    }
+
     Rectangle {
         id: dockBar
         width: window.dockBarWidth
@@ -202,7 +235,7 @@ Window {
         radius: window.dockBarRadius
         color: window.cBarBg
         border.width: 1
-        border.color: window.cBorder
+        border.color: window.dragOver ? "#7dd3fc" : window.cBorder
         anchors.horizontalCenter: parent.horizontalCenter
 
         // Slides within the (already full-size, while showing/hiding) window.

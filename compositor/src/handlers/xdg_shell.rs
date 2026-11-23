@@ -327,7 +327,13 @@ impl State {
         } else {
             self.usable_zone(&output)
         };
-        let Some(target) = target else { return };
+        let Some(mut target) = target else { return };
+        // Maximized under a compositor titlebar: the client gets what is left.
+        if mode == xdg_toplevel::State::Maximized && crate::titlebar::is_ssd(&window) {
+            let tb = crate::titlebar::HEIGHT;
+            target.loc.y += tb;
+            target.size.h = (target.size.h - tb).max(1);
+        }
 
         {
             let mut data = window_data(&window).borrow_mut();

@@ -3,6 +3,7 @@ use std::{ffi::OsString, sync::Arc, time::{Duration, Instant}};
 use smithay::{
     desktop::{PopupManager, Space, Window},
     input::{Seat, SeatState, keyboard::XkbConfig, pointer::CursorImageStatus},
+    utils::{Logical, Point},
     reexports::{
         calloop::{
             EventLoop, Interest, LoopHandle, LoopSignal, Mode, PostAction, channel,
@@ -44,6 +45,28 @@ use crate::{
 const KEY_REPEAT_DELAY: i32 = 200;
 const KEY_REPEAT_RATE: i32 = 25;
 
+/// Drag-and-drop icon surface plus where its origin sits relative to the pointer
+/// (the client moves it with attach offsets).
+#[derive(Debug)]
+pub struct DndIcon {
+    pub surface: WlSurface,
+    pub offset: Point<i32, Logical>,
+    /// True once the icon has been centred on the pointer (or the client gave its own hotspot).
+    pub placed: bool,
+}
+
+impl DndIcon {
+    /// Where the image sits relative to the pointer. Qt on Wayland sends no
+    /// hotspot, so an image without one is centred on the pointer.
+    pub fn effective_offset(&self) -> Point<i32, Logical> {
+        if self.placed {
+            return self.offset;
+        }
+        let size = smithay::desktop::utils::bbox_from_surface_tree(&self.surface, (0, 0)).size;
+        (self.offset.x - size.w / 2, self.offset.y - size.h / 2).into()
+    }
+}
+
 pub struct State {
     pub start_time: Instant,
     pub socket_name: OsString,
@@ -57,8 +80,12 @@ pub struct State {
     pub space: Space<Window>,
     pub popups: PopupManager,
     pub cursor_status: CursorImageStatus,
+    /// The image a client wants drawn under the pointer while it drags something.
+    pub dnd_icon: Option<DndIcon>,
     /// Counter used to cascade newly placed windows.
     pub cascade: i32,
+    /// Last click on a compositor titlebar (double-click to maximize).
+    pub last_title_click: Option<(std::time::Instant, smithay::desktop::Window)>,
 
     // Smithay protocol state
     pub compositor_state: CompositorState,
@@ -173,7 +200,9 @@ impl State {
             space: Space::default(),
             popups,
             cursor_status: CursorImageStatus::default_named(),
+            dnd_icon: None,
             cascade: 0,
+            last_title_click: None,
             compositor_state,
             xdg_shell_state,
             xdg_decoration_state,
