@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Window
 import org.kde.layershell 1.0 as LayerShell
 import Qt5Compat.GraphicalEffects
+import com.vamora
 
 Window {
     id: notificationWindow
@@ -39,6 +40,28 @@ Window {
 
     property bool isDark: true
 
+    // Real notifications, from the compositor's notification service.
+    property var items: []
+    property double nowSecs: Date.now() / 1000
+
+    NotificationStore { id: store }
+
+    function refresh() {
+        notificationWindow.nowSecs = Date.now() / 1000
+        try { notificationWindow.items = JSON.parse(store.json()) } catch (e) { notificationWindow.items = [] }
+    }
+
+    function ago(t) {
+        var d = Math.max(0, notificationWindow.nowSecs - t)
+        if (d < 60) return "now"
+        if (d < 3600) return Math.floor(d / 60) + "m"
+        if (d < 86400) return Math.floor(d / 3600) + "h"
+        return Math.floor(d / 86400) + "d"
+    }
+
+    Component.onCompleted: refresh()
+    Timer { interval: 1000; repeat: true; running: notificationWindow.visible; onTriggered: notificationWindow.refresh() }
+
     onActiveChanged: {
         if (!active)
             notificationWindow.close()
@@ -51,30 +74,31 @@ Window {
         border.width: 1
         border.color: notificationWindow.cBorder
 
-        Column {
+        Item {
             anchors.fill: parent
             anchors.margins: 16
-            spacing: 10
 
-            Row {
+            // Header
+            Item {
+                id: header
                 width: parent.width
                 height: 30
 
                 Column {
-                    width: parent.width - 92
+                    anchors.verticalCenter: parent.verticalCenter
                     spacing: 1
-
                     Text {
                         text: "NOTIFICATIONS"
                         color: notificationWindow.cText
-                        font.pixelSize: 12
+                        font.pixelSize: 11
                         font.weight: Font.DemiBold
-                        font.letterSpacing: 1
+                        font.letterSpacing: 0.6
                         font.family: "Inter"
                     }
-
                     Text {
-                        text: "A small sample notification center"
+                        text: notificationWindow.items.length === 0
+                            ? "You're all caught up"
+                            : notificationWindow.items.length + (notificationWindow.items.length === 1 ? " notification" : " notifications")
                         color: notificationWindow.cMuted
                         font.pixelSize: 10
                         font.family: "Inter"
@@ -82,12 +106,13 @@ Window {
                 }
 
                 Rectangle {
-                    width: 70
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: notificationWindow.items.length > 0
+                    width: 74
                     height: 28
                     radius: 9
-                    color: clearMouse.containsMouse
-                        ? notificationWindow.cHover
-                        : notificationWindow.cSurface
+                    color: clearMouse.containsMouse ? notificationWindow.cHover : notificationWindow.cSurface
 
                     Text {
                         anchors.centerIn: parent
@@ -101,165 +126,16 @@ Window {
                         id: clearMouse
                         anchors.fill: parent
                         hoverEnabled: true
-                        onClicked: notificationList.visible = false
+                        onClicked: { store.clear(); notificationWindow.refresh() }
                     }
                 }
             }
 
-            Column {
-                id: notificationList
-                width: parent.width
-                spacing: 7
-
-                Rectangle {
-                    width: parent.width
-                    height: 74
-                    radius: 14
-                    color: notificationOneMouse.containsMouse
-                        ? notificationWindow.cHover
-                        : notificationWindow.cSurface
-                    border.width: 1
-                    border.color: notificationWindow.cBorder
-
-                    Image {
-                        id: notificationOneIcon
-                        anchors.left: parent.left
-                        anchors.leftMargin: 12
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 24
-                        height: 24
-                        source: "../../assets/icons/notification/bell-dot.svg"
-                        smooth: false
-                        sourceSize.width: 64
-                        sourceSize.height: 64
-                        layer.enabled: true
-                        layer.effect: ColorOverlay {
-                            color: notificationWindow.cText
-                        }
-                    }
-
-                    Column {
-                        anchors.left: notificationOneIcon.right
-                        anchors.leftMargin: 12
-                        anchors.right: parent.right
-                        anchors.rightMargin: 12
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: 3
-
-                        Row {
-                            width: parent.width
-
-                            Text {
-                                text: "Welcome to Vamora"
-                                color: notificationWindow.cText
-                                font.pixelSize: 12
-                                font.weight: Font.Medium
-                                font.family: "Inter"
-                            }
-
-                            Item { width: 1; height: 1 }
-
-                            Text {
-                                anchors.right: parent.right
-                                text: "now"
-                                color: notificationWindow.cMuted
-                                font.pixelSize: 10
-                                font.family: "Inter"
-                            }
-                        }
-
-                        Text {
-                            width: parent.width
-                            text: "Your workspace is ready to use."
-                            color: notificationWindow.cMuted
-                            font.pixelSize: 10
-                            font.family: "Inter"
-                            elide: Text.ElideRight
-                        }
-                    }
-
-                    MouseArea {
-                        id: notificationOneMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                    }
-                }
-
-                Rectangle {
-                    width: parent.width
-                    height: 74
-                    radius: 14
-                    color: notificationTwoMouse.containsMouse
-                        ? notificationWindow.cHover
-                        : notificationWindow.cSurface
-                    border.width: 1
-                    border.color: notificationWindow.cBorder
-
-                    Image {
-                        id: notificationTwoIcon
-                        anchors.left: parent.left
-                        anchors.leftMargin: 12
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 24
-                        height: 24
-                        source: "../../assets/icons/refresh.svg"
-                        smooth: false
-                        sourceSize.width: 64
-                        sourceSize.height: 64
-                        layer.enabled: true
-                        layer.effect: ColorOverlay {
-                            color: notificationWindow.cText
-                        }
-                    }
-
-                    Column {
-                        anchors.left: notificationTwoIcon.right
-                        anchors.leftMargin: 12
-                        anchors.right: parent.right
-                        anchors.rightMargin: 12
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: 3
-
-                        Row {
-                            width: parent.width
-
-                            Text {
-                                text: "System update"
-                                color: notificationWindow.cText
-                                font.pixelSize: 12
-                                font.weight: Font.Medium
-                                font.family: "Inter"
-                            }
-
-                            Text {
-                                anchors.right: parent.right
-                                text: "2m"
-                                color: notificationWindow.cMuted
-                                font.pixelSize: 10
-                                font.family: "Inter"
-                            }
-                        }
-
-                        Text {
-                            width: parent.width
-                            text: "StatusBar is running normally."
-                            color: notificationWindow.cMuted
-                            font.pixelSize: 10
-                            font.family: "Inter"
-                            elide: Text.ElideRight
-                        }
-                    }
-
-                    MouseArea {
-                        id: notificationTwoMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                    }
-                }
-            }
-
+            // Empty state
             Rectangle {
-                visible: !notificationList.visible
+                visible: notificationWindow.items.length === 0
+                anchors.top: header.bottom
+                anchors.topMargin: 10
                 width: parent.width
                 height: 74
                 radius: 14
@@ -273,6 +149,149 @@ Window {
                     color: notificationWindow.cMuted
                     font.pixelSize: 11
                     font.family: "Inter"
+                }
+            }
+
+            Flickable {
+                id: flick
+                visible: notificationWindow.items.length > 0
+                anchors.top: header.bottom
+                anchors.topMargin: 10
+                anchors.bottom: parent.bottom
+                width: parent.width
+                contentHeight: list.height
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+
+                Column {
+                    id: list
+                    width: parent.width
+                    spacing: 7
+
+                    Repeater {
+                        model: notificationWindow.items
+
+                        Rectangle {
+                            id: card
+                            required property var modelData
+                            readonly property int hue: { var h = 7; for (var i = 0; i < modelData.app.length; i++) h = (h * 31 + modelData.app.charCodeAt(i)) % 360; return h }
+                            width: list.width
+                            height: Math.max(66, textCol.implicitHeight + 24)
+                            radius: 14
+                            color: cardMouse.containsMouse ? notificationWindow.cHover : notificationWindow.cSurface
+                            border.width: 1
+                            border.color: notificationWindow.cBorder
+
+                            // App icon, or a coloured initial when there is none
+                            Item {
+                                id: cardIcon
+                                anchors.left: parent.left
+                                anchors.leftMargin: 12
+                                anchors.top: parent.top
+                                anchors.topMargin: 13
+                                width: 32
+                                height: 32
+
+                                Image {
+                                    id: iconImg
+                                    anchors.fill: parent
+                                    visible: card.modelData.icon !== "" && status === Image.Ready
+                                    source: card.modelData.icon !== "" ? "file://" + card.modelData.icon : ""
+                                    sourceSize.width: 96
+                                    sourceSize.height: 96
+                                    fillMode: Image.PreserveAspectFit
+                                    asynchronous: true
+                                    layer.enabled: true
+                                    layer.effect: OpacityMask {
+                                        maskSource: Rectangle { width: 32; height: 32; radius: 9 }
+                                    }
+                                }
+                                Rectangle {
+                                    anchors.fill: parent
+                                    visible: !iconImg.visible
+                                    radius: 16
+                                    color: Qt.hsla((card.hue % 360) / 360, notificationWindow.isDark ? 0.45 : 0.55, notificationWindow.isDark ? 0.42 : 0.5, 1)
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: card.modelData.app.length > 0 ? card.modelData.app.charAt(0).toUpperCase() : "!"
+                                        color: "white"
+                                        font.pixelSize: 15
+                                        font.weight: Font.DemiBold
+                                        font.family: "Inter"
+                                    }
+                                }
+                            }
+
+                            // Picture (avatar / preview), if the app sent one
+                            Image {
+                                id: pic
+                                anchors.right: parent.right
+                                anchors.rightMargin: 12
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 44
+                                height: 44
+                                visible: card.modelData.image !== "" && status === Image.Ready
+                                source: card.modelData.image !== "" ? "file://" + card.modelData.image : ""
+                                sourceSize.width: 132
+                                sourceSize.height: 132
+                                fillMode: Image.PreserveAspectCrop
+                                asynchronous: true
+                                layer.enabled: true
+                                layer.effect: OpacityMask {
+                                    maskSource: Rectangle { width: 44; height: 44; radius: 9 }
+                                }
+                            }
+
+                            Column {
+                                id: textCol
+                                anchors.left: cardIcon.right
+                                anchors.leftMargin: 12
+                                anchors.right: pic.visible ? pic.left : parent.right
+                                anchors.rightMargin: pic.visible ? 10 : 12
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 3
+
+                                Text {
+                                    width: parent.width
+                                    text: card.modelData.app + "  ·  " + notificationWindow.ago(card.modelData.time)
+                                    color: notificationWindow.cMuted
+                                    font.pixelSize: 9
+                                    font.weight: Font.Medium
+                                    font.capitalization: Font.AllUppercase
+                                    font.family: "Inter"
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    width: parent.width
+                                    text: card.modelData.summary
+                                    color: notificationWindow.cText
+                                    font.pixelSize: 12
+                                    font.weight: Font.Medium
+                                    font.family: "Inter"
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    width: parent.width
+                                    visible: text !== ""
+                                    text: card.modelData.body
+                                    color: notificationWindow.cMuted
+                                    font.pixelSize: 10
+                                    font.family: "Inter"
+                                    wrapMode: Text.WordWrap
+                                    maximumLineCount: 3
+                                    elide: Text.ElideRight
+                                }
+                            }
+
+                            MouseArea {
+                                id: cardMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                // click a notification to dismiss it
+                                onClicked: { store.dismiss(card.modelData.id); notificationWindow.refresh() }
+                            }
+                        }
+                    }
                 }
             }
         }

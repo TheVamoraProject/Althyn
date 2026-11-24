@@ -12,6 +12,8 @@ mod handlers;
 mod input;
 mod render;
 mod titlebar;
+mod notify;
+mod notify_icons;
 mod shell;
 mod state;
 

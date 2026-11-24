@@ -1,5 +1,6 @@
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QUrl};
 mod applist;
+mod wallluma;
 mod x11below;
 
 const HOMESCREEN_TITLE: &str = "Vamora Homescreen";

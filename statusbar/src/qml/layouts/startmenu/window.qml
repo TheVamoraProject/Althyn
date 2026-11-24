@@ -63,6 +63,8 @@ Window {
 
     property bool isMaximized: false
     property bool ignoreDeactivate: false
+    // An app is being dragged out of the menu (see the grid delegate).
+    property bool dragging: false
     property real normalX: 0
     property real normalY: 0
     property real normalWidth: width
@@ -437,11 +439,49 @@ Window {
                         hoverColor: cSurfaceHover
                     }
 
+                    // Drag an app out of the menu onto the dock or the homescreen: the
+                    // .desktop file is offered as a Copy, those two pin it.
+                    Drag.dragType: Drag.Automatic
+                    Drag.supportedActions: Qt.CopyAction
+                    Drag.proposedAction: Qt.CopyAction
+                    Drag.onDragFinished: function(action) {
+                        window.dragging = false
+                        window.close()
+                    }
+                    function beginNativeDrag(gx, gy) {
+                        var path = modelData.desktopPath || ""
+                        if (path === "") return
+                        iconWrap.grabToImage(function(result) {
+                            if (!iconMouse.pressed) return   // released before the snapshot was ready
+                            window.ignoreDeactivate = true
+                            window.dragging = true
+                            iconWrap.Drag.imageSource = result.url
+                            iconWrap.Drag.hotSpot = Qt.point(gx, gy)
+                            iconWrap.Drag.mimeData = {
+                                "text/uri-list": encodeURI("file://" + path) + "\r\n",
+                                "text/plain": path
+                            }
+                            iconWrap.Drag.active = true
+                        })
+                    }
+
                     MouseArea {
+                        id: iconMouse
                         anchors.fill: parent
                         hoverEnabled: true
                         propagateComposedEvents: true
                         acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        property real pressX: 0
+                        property real pressY: 0
+                        property bool dragStarted: false
+                        onPressed: function(mouse) { pressX = mouse.x; pressY = mouse.y; dragStarted = false }
+                        onPositionChanged: function(mouse) {
+                            if (!pressed || dragStarted || iconWrap.Drag.active || mouse.buttons !== Qt.LeftButton) return
+                            var dx = mouse.x - pressX, dy = mouse.y - pressY
+                            if (Math.sqrt(dx * dx + dy * dy) < Qt.styleHints.startDragDistance) return
+                            dragStarted = true
+                            iconWrap.beginNativeDrag(pressX, pressY)
+                        }
                         onEntered: iconWrap.scale = 1.08
                         onExited:  iconWrap.scale = 1
                         onClicked: function(mouse) {
@@ -495,6 +535,51 @@ Window {
                 anchors.leftMargin: 5
                 anchors.rightMargin: 5
                 spacing: 2
+
+                // "Add to Dock"
+                Rectangle {
+                    width: parent.width
+                    height: 34
+                    radius: 6
+                    color: dockMa.containsMouse ? cSurfaceHover : "transparent"
+
+                    Row {
+                        anchors.verticalCenter: parent.verticalCenter
+                        x: 12
+                        spacing: 8
+                        Item {
+                            width: 14; height: 14
+                            anchors.verticalCenter: parent.verticalCenter
+                            Image {
+                                id: iconDock
+                                anchors.fill: parent
+                                source: "../../assets/icons/bottom-panel-open.svg"
+                                smooth: true
+                            }
+                            ColorOverlay {
+                                anchors.fill: iconDock
+                                source: iconDock
+                                color: cText
+                            }
+                        }
+                        Text {
+                            text: "Add to Dock"
+                            color: cText
+                            font.pixelSize: 13
+                            font.family: "Inter"
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+                    MouseArea {
+                        id: dockMa
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: {
+                            appList.copyToDock(ctxDesktopPath)
+                            ctxMenu.visible = false
+                        }
+                    }
+                }
 
                 // "Add to Homescreen"
                 Rectangle {

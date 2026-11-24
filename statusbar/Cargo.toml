@@ -14,6 +14,9 @@ x11rb = "0.13"
 # the wallpaper brightness under the bar (screen pixels can't be read there).
 wayland-client = "0.31"
 wayland-protocols-wlr = { version = "0.3", default-features = false, features = ["client"] }
+# Notification centre: talks to the compositor's org.vamora.Notifications service
+zbus = "5"
+serde = "1"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 
 [build-dependencies]

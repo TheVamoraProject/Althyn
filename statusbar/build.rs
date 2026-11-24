@@ -5,6 +5,7 @@ fn main() {
         .qt_module("Network")
         .file("src/cxxqt_object.rs")
         .file("src/userinfo.rs")
+        .file("src/notifications.rs")
         .file("src/applist.rs")
         .file("src/theme.rs")
         .file("src/device.rs")

@@ -189,6 +189,31 @@ impl State {
             })
             .expect("failed to register the settings channel");
 
+        // Notifications: D-Bus service on its own thread, toasts expire on a timer.
+        let (ntx, nrx) = channel::channel::<crate::notify::Msg>();
+        crate::notify::spawn(ntx);
+        loop_handle
+            .insert_source(nrx, |event, _, _| {
+                if let channel::Event::Msg(msg) = event {
+                    match msg {
+                        crate::notify::Msg::Notify { n, .. } => crate::notify::show(n),
+                        crate::notify::Msg::Close(id) => {
+                            crate::notify::close(id, crate::notify::REASON_CLOSED)
+                        }
+                    }
+                }
+            })
+            .expect("failed to register the notification channel");
+        loop_handle
+            .insert_source(
+                smithay::reexports::calloop::timer::Timer::from_duration(std::time::Duration::from_millis(250)),
+                |_, _, _| {
+                    crate::notify::expire(std::time::Instant::now());
+                    smithay::reexports::calloop::timer::TimeoutAction::ToDuration(std::time::Duration::from_millis(250))
+                },
+            )
+            .expect("failed to register the notification timer");
+
         Self {
             start_time,
             socket_name,

@@ -25,6 +25,11 @@ pub mod qobject {
         #[cxx_name = "copyToDesktop"]
         fn copy_to_desktop(self: &AppList, desktop_file_path: &QString);
 
+        /// Pins a .desktop file to the dock (~/.VamoraSys/althyn/dock/contents/).
+        #[qinvokable]
+        #[cxx_name = "copyToDock"]
+        fn copy_to_dock(self: &AppList, desktop_file_path: &QString);
+
         /// Copies a .desktop file to ~/Desktop/.favorites/.
         #[qinvokable]
         #[cxx_name = "copyToFavorites"]
@@ -99,6 +104,32 @@ impl qobject::AppList {
             let dest = dest_dir.join(file_name);
             let _ = std::fs::copy(&src_path, &dest);
         }
+    }
+
+    pub fn copy_to_dock(&self, desktop_file_path: &QString) {
+        let src_path = PathBuf::from(format!("{}", desktop_file_path));
+        if !src_path.is_file() {
+            return;
+        }
+        let Ok(home) = std::env::var("HOME") else { return };
+        let dir = PathBuf::from(home).join(".VamoraSys/althyn/dock/contents");
+        let _ = std::fs::create_dir_all(&dir);
+        let Some(name) = src_path.file_name() else { return };
+        // Already pinned (same file name, or another entry with the same Exec): nothing to do.
+        let exec = |p: &PathBuf| {
+            std::fs::read_to_string(p)
+                .ok()
+                .and_then(|c| c.lines().find_map(|l| l.strip_prefix("Exec=").map(|e| e.trim().to_string())))
+        };
+        let src_exec = exec(&src_path);
+        if let Ok(rd) = std::fs::read_dir(&dir) {
+            for e in rd.flatten() {
+                if e.file_name() == name || (src_exec.is_some() && exec(&e.path()) == src_exec) {
+                    return;
+                }
+            }
+        }
+        let _ = std::fs::copy(&src_path, dir.join(name));
     }
 
     pub fn get_favorites_json(&self) -> QString {

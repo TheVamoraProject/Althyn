@@ -214,6 +214,16 @@ impl State {
         let serial = SERIAL_COUNTER.next_serial();
         let button_state = event.state();
 
+        // Click on a notification toast dismisses it.
+        if button_state == ButtonState::Pressed && !pointer.is_grabbed() && event.button_code() == 0x110 {
+            if let Some(zone) = self.active_output().and_then(|o| self.usable_zone(&o))
+                && let Some(id) = crate::notify::toast_at(zone, pointer.current_location())
+            {
+                crate::notify::close(id, crate::notify::REASON_DISMISSED);
+                return;
+            }
+        }
+
         // Compositor titlebar: buttons, drag to move.
         if button_state == ButtonState::Pressed
             && !pointer.is_grabbed()

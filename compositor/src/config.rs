@@ -95,7 +95,7 @@ impl Default for Config {
 }
 
 /// `vamorasys settings get <key>`; `None` on any failure or empty output.
-fn get_setting(key: &str) -> Option<String> {
+pub(crate) fn get_setting(key: &str) -> Option<String> {
     let out = Command::new("vamorasys")
         .args(["settings", "get", key])
         .stdin(Stdio::null())

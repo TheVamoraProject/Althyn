@@ -3,6 +3,7 @@ mod applist;
 mod cxxqt_object;
 mod device;
 mod network;
+mod notifications;
 mod power;
 mod wltoplevel;
 mod x11maximize;

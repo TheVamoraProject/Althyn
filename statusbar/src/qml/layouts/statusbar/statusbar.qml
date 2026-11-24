@@ -334,6 +334,14 @@ Window {
 
                 Button { // notification (hidden on phones/tablets: swipe down from the top-left instead)
                     id: notificationButton
+                    property int unread: 0
+                    NotificationStore { id: barNotifications }
+                    Timer {
+                        interval: 3000; repeat: true; running: true; triggeredOnStart: true
+                        onTriggered: {
+                            try { notificationButton.unread = JSON.parse(barNotifications.json()).length } catch (e) { notificationButton.unread = 0 }
+                        }
+                    }
                     visible: !window.phoneOrTablet
                     width: trayBtnSize
                     height: trayBtnSize
@@ -354,7 +362,7 @@ Window {
                         anchors.centerIn: parent
                         width: iconSize
                         height: iconSize
-                        source: "../../assets/icons/notification/bell.svg"
+                        source: notificationButton.unread > 0 ? "../../assets/icons/notification/bell-dot.svg" : "../../assets/icons/notification/bell.svg"
                         layer.enabled: true
                         layer.effect: ColorOverlay {
                             color: cText

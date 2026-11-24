@@ -175,7 +175,7 @@ fn font() -> Option<&'static FontVec> {
     .as_ref()
 }
 
-struct Canvas {
+pub struct Canvas {
     w: i32,
     h: i32,
     /// Premultiplied RGBA (converted to BGRA bytes at the end).
@@ -183,6 +183,55 @@ struct Canvas {
 }
 
 impl Canvas {
+    pub fn new(w: i32, h: i32) -> Self {
+        Self { w, h, px: vec![[0.0; 4]; (w * h) as usize] }
+    }
+
+    /// Draws `img` (straight RGBA) at (x, y) with rounded corners.
+    pub fn blit(&mut self, img: &image::RgbaImage, x: i32, y: i32, radius: f32) {
+        let (iw, ih) = (img.width() as f32, img.height() as f32);
+        for (px, py, p) in img.enumerate_pixels() {
+            let (fx, fy) = (px as f32 + 0.5 - iw / 2.0, py as f32 + 0.5 - ih / 2.0);
+            let (qx, qy) = (fx.abs() - (iw / 2.0 - radius), fy.abs() - (ih / 2.0 - radius));
+            let d = (qx.max(0.0).powi(2) + qy.max(0.0).powi(2)).sqrt() + qx.max(qy).min(0.0) - radius;
+            let cov = (0.5 - d).clamp(0.0, 1.0);
+            let a = p[3] as f32 / 255.0 * cov;
+            self.blend(x + px as i32, y + py as i32, [p[0] as f32 / 255.0, p[1] as f32 / 255.0, p[2] as f32 / 255.0], a);
+        }
+    }
+
+    /// Round coloured badge with the app's initial (no icon available).
+    pub fn avatar(&mut self, name: &str, x: i32, y: i32, size: i32, dark: bool) {
+        let hash = name.chars().fold(7u32, |h, c| (h * 31 + c as u32) % 360);
+        let hue = (hash % 360) as f32;
+        let rgb = hsl(hue, if dark { 0.45 } else { 0.55 }, if dark { 0.42 } else { 0.5 });
+        let r = size as f32 / 2.0;
+        for py in 0..size {
+            for px in 0..size {
+                let d = ((px as f32 + 0.5 - r).powi(2) + (py as f32 + 0.5 - r).powi(2)).sqrt() - r;
+                self.blend(x + px, y + py, rgb, (0.5 - d).clamp(0.0, 1.0));
+            }
+        }
+        let initial: String = name.chars().next().map(|c| c.to_uppercase().collect()).unwrap_or_default();
+        let px = size as f32 * 0.46;
+        let wd = text_width(&initial, px);
+        draw_text(self, &initial, x as f32 + r - wd / 2.0, y as f32 + r + px * 0.36, px, [1.0, 1.0, 1.0], 1.0, x as f32 + size as f32);
+    }
+
+    /// ARGB8888 bytes (little-endian B, G, R, A), premultiplied.
+    pub fn into_argb(self) -> Vec<u8> {
+        let mut out = Vec::with_capacity(self.px.len() * 4);
+        for p in &self.px {
+            out.extend_from_slice(&[
+                (p[2] * 255.0).round() as u8,
+                (p[1] * 255.0).round() as u8,
+                (p[0] * 255.0).round() as u8,
+                (p[3] * 255.0).round() as u8,
+            ]);
+        }
+        out
+    }
+
     fn blend(&mut self, x: i32, y: i32, rgb: [f32; 3], a: f32) {
         if x < 0 || y < 0 || x >= self.w || y >= self.h || a <= 0.0 {
             return;
@@ -221,36 +270,15 @@ impl Canvas {
 pub fn rasterize(key: &Key) -> Vec<u8> {
     let s = key.scale as f32;
     let (w, h) = (key.width * key.scale, HEIGHT * key.scale);
-    let mut c = Canvas { w, h, px: vec![[0.0; 4]; (w * h) as usize] };
+    let mut c = Canvas::new(w, h);
     let fg: [f32; 3] = if key.dark { [0.894, 0.894, 0.906] } else { [0.094, 0.094, 0.106] };
     let alpha = if key.active { 1.0 } else { 0.55 };
 
     // Title
-    if let Some(font) = font() {
-        let px = 13.5 * s;
-        let scaled = font.as_scaled(PxScale::from(px));
-        let (max_c, _) = button_centers(key.width);
-        let limit = ((max_c - BUTTON_W / 2 - 12) as f32) * s;
-        let mut x = 16.0 * s + if key.maximized { 0.0 } else { 0.0 };
-        let baseline = (h as f32) / 2.0 + (scaled.ascent() + scaled.descent()) / 2.0;
-        let ellipsis = scaled.glyph_id('…');
-        let ell_w = scaled.h_advance(ellipsis);
-        let chars: Vec<char> = key.title.chars().collect();
-        let total: f32 = chars.iter().map(|ch| scaled.h_advance(scaled.glyph_id(*ch))).sum();
-        let truncate = x + total > limit;
-        for ch in chars {
-            let id = scaled.glyph_id(ch);
-            let adv = scaled.h_advance(id);
-            if truncate && x + adv + ell_w > limit {
-                let g = id_glyph(ellipsis, px, x, baseline);
-                draw_glyph(&mut c, font, g, fg, alpha);
-                break;
-            }
-            let g = id_glyph(id, px, x, baseline);
-            draw_glyph(&mut c, font, g, fg, alpha);
-            x += adv;
-        }
-    }
+    let (max_c, _) = button_centers(key.width);
+    let limit = ((max_c - BUTTON_W / 2 - 12) as f32) * s;
+    let baseline = h as f32 / 2.0 + 13.5 * s * 0.36;
+    draw_text(&mut c, &key.title, 16.0 * s, baseline, 13.5 * s, fg, alpha, limit);
 
     // Buttons
     let (max_c, close_c) = button_centers(key.width);
@@ -273,16 +301,7 @@ pub fn rasterize(key: &Key) -> Vec<u8> {
         rect_outline(&mut c, mx - r, cy - r, mx + r, cy + r, t, fg, alpha);
     }
 
-    let mut out = Vec::with_capacity(c.px.len() * 4);
-    for p in &c.px {
-        out.extend_from_slice(&[
-            (p[2] * 255.0).round() as u8,
-            (p[1] * 255.0).round() as u8,
-            (p[0] * 255.0).round() as u8,
-            (p[3] * 255.0).round() as u8,
-        ]);
-    }
-    out
+    c.into_argb()
 }
 
 fn rect_outline(c: &mut Canvas, x0: f32, y0: f32, x1: f32, y1: f32, t: f32, rgb: [f32; 3], a: f32) {
@@ -303,4 +322,49 @@ fn draw_glyph(c: &mut Canvas, font: &FontVec, glyph: ab_glyph::Glyph, rgb: [f32;
             c.blend(b.min.x as i32 + gx as i32, b.min.y as i32 + gy as i32, rgb, cov * alpha);
         });
     }
+}
+
+/// Width of `text` at `px` pixels.
+pub fn text_width(text: &str, px: f32) -> f32 {
+    let Some(font) = font() else { return text.chars().count() as f32 * px * 0.55 };
+    let scaled = font.as_scaled(PxScale::from(px));
+    text.chars().map(|c| scaled.h_advance(scaled.glyph_id(c))).sum()
+}
+
+/// Draws one line, cut with an ellipsis at `max_x`. `baseline` is the y of the
+/// text baseline.
+#[allow(clippy::too_many_arguments)]
+pub fn draw_text(c: &mut Canvas, text: &str, x: f32, baseline: f32, px: f32, rgb: [f32; 3], alpha: f32, max_x: f32) {
+    let Some(font) = font() else { return };
+    let scaled = font.as_scaled(PxScale::from(px));
+    let ellipsis = scaled.glyph_id('…');
+    let ell_w = scaled.h_advance(ellipsis);
+    let total: f32 = text.chars().map(|ch| scaled.h_advance(scaled.glyph_id(ch))).sum();
+    let truncate = x + total > max_x;
+    let mut x = x;
+    for ch in text.chars() {
+        let id = scaled.glyph_id(ch);
+        let adv = scaled.h_advance(id);
+        if truncate && x + adv + ell_w > max_x {
+            draw_glyph(c, font, id_glyph(ellipsis, px, x, baseline), rgb, alpha);
+            break;
+        }
+        draw_glyph(c, font, id_glyph(id, px, x, baseline), rgb, alpha);
+        x += adv;
+    }
+}
+
+fn hsl(h: f32, s: f32, l: f32) -> [f32; 3] {
+    let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
+    let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
+    let m = l - c / 2.0;
+    let (r, g, b) = match (h / 60.0) as u32 {
+        0 => (c, x, 0.0),
+        1 => (x, c, 0.0),
+        2 => (0.0, c, x),
+        3 => (0.0, x, c),
+        4 => (x, 0.0, c),
+        _ => (c, 0.0, x),
+    };
+    [r + m, g + m, b + m]
 }

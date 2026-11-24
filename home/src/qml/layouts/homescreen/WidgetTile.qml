@@ -1,5 +1,7 @@
 import QtQuick
+import QtQuick.Window
 import Qt5Compat.GraphicalEffects
+import com.vamora
 
 Item {
     id: tile
@@ -11,6 +13,21 @@ Item {
     // placeholder box instead of crashing a Loader on a bad path.
     property string widgetSource: ""
     property color textColor: "#f4f4f5"
+    // Label colour: textColor, or dark text where the wallpaper behind the
+    // label is bright (no outline needed).
+    property bool darkLabel: false
+    readonly property color labelColor: darkLabel ? "#18181b" : textColor
+    function updateLabelColor() {
+        var w = tile.Window.window
+        if (!w || !tile.visible || tile.width <= 0) return
+        var p = tile.mapToItem(null, 0, tile.height - 20)
+        var l = wallLuma.luminance(Math.round(p.x), Math.round(p.y), Math.round(tile.width), 20, w.width, w.height)
+        if (l < 0) return
+        // small hysteresis so a label never flickers around the threshold
+        tile.darkLabel = tile.darkLabel ? l > 0.44 : l > 0.5
+    }
+    WallLuma { id: wallLuma }
+    Timer { id: lumaTimer; interval: 350; repeat: true; running: tile.visible; triggeredOnStart: true; onTriggered: tile.updateLabelColor() }
     // The widget's own Vamify=true/false (missing defaults to true):
     // rounds the widget's rendered content to match the rest of VamoraOS,
     // or leaves it exactly as the widget draws itself.
@@ -86,13 +103,11 @@ Item {
 
         Text {
             text: tile.widgetName
-            color: tile.textColor
+            color: tile.labelColor
+            Behavior on color { ColorAnimation { duration: 160 } }
             font.family: "Inter"
             font.pixelSize: 12
             font.weight: Font.Medium
-            // Keeps labels readable on busy wallpapers.
-            style: Text.Outline
-            styleColor: "#b3000000"
             width: tile.width
             horizontalAlignment: Text.AlignHCenter
             elide: Text.ElideRight

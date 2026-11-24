@@ -15,6 +15,11 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 bitflags = "2.2.1"
 # Titlebar text (compositor-drawn window decorations, src/titlebar.rs)
 ab_glyph = "0.2"
+# freedesktop notification daemon (src/notify.rs)
+zbus = "5"
+# notification icons and pictures (png/jpeg, plus svg icons through resvg)
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+resvg = { version = "0.45", default-features = false }
 # wlr-foreign-toplevel-management server (src/foreign_toplevel.rs)
 wayland-protocols-wlr = { version = "0.3", default-features = false, features = ["server"] }
 # Only used by the udev backend (see `udev` feature).

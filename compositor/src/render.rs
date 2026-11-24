@@ -342,6 +342,62 @@ pub fn scene_elements(
         }
     };
 
+    // Notification toasts sit above everything else.
+    {
+        let zone_rel = layer_map.non_exclusive_zone();
+        let mut toasts = crate::notify::TOASTS.lock().unwrap();
+        for (i, toast) in toasts.iter_mut().enumerate() {
+            let p = open_progress(Some(toast.shown_at), now);
+            let mut rect = crate::notify::toast_rect(zone_rel, i);
+            rect.loc.x += ((1.0 - p) * 36.0) as i32;
+            let key = crate::notify::TextKey {
+                app: toast.n.app.clone(),
+                summary: toast.n.summary.clone(),
+                body: toast.n.body.clone(),
+                icon: toast.n.icon.clone(),
+                image: toast.n.image.clone(),
+                scale: scale.x.ceil().max(1.0) as i32,
+                dark,
+            };
+            if toast.buf.as_ref().is_none_or(|(k, _)| *k != key) {
+                let bytes = crate::notify::rasterize(&key);
+                let buf = MemoryRenderBuffer::from_slice(
+                    &bytes,
+                    Fourcc::Argb8888,
+                    (crate::notify::TOAST_W * key.scale, crate::notify::TOAST_H * key.scale),
+                    key.scale,
+                    Transform::Normal,
+                    None,
+                );
+                toast.buf = Some((key, buf));
+            }
+            if let Some((_, buf)) = toast.buf.as_ref()
+                && let Ok(el) = MemoryRenderBufferRenderElement::from_buffer(
+                    renderer,
+                    rect.loc.to_f64().to_physical(scale),
+                    buf,
+                    Some(p),
+                    None,
+                    None,
+                    Kind::Unspecified,
+                )
+            {
+                out.push(SceneElement::Title(el));
+            }
+            if let Some(fp) = frame_prog.clone() {
+                let tint = if dark { (0.15f32, 0.15f32, 0.17f32) } else { (1.0f32, 1.0f32, 1.0f32) };
+                out.push(SceneElement::Frame(PixelShaderElement::new(
+                    fp,
+                    rect,
+                    None,
+                    p,
+                    vec![Uniform::new("radius", 18.0 * scale.x as f32), Uniform::new("tint_rgb", tint)],
+                    Kind::Unspecified,
+                )));
+            }
+        }
+    }
+
     layers(renderer, Layer::Overlay, &mut out);
     layers(renderer, Layer::Top, &mut out);
 
